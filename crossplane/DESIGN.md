@@ -50,10 +50,24 @@ secret to store.
 
 ## Status
 
-Skeleton only. See:
+Implemented and verified end-to-end (create → self-heal → finalizer delete) against
+a live Foundry project. Files:
 
-- `apis/v1alpha1/foundryagent_types.go` — the object
-- `internal/controller/foundryagent/external.go` — the four methods
+- `apis/v1alpha1/` — the `FoundryAgent` type + managed-resource methods
+- `internal/clients/foundry.go` — the REST client (Get / Upsert / Delete)
+- `internal/controller/foundryagent/foundryagent.go` — connector + Observe/Create/Update/Delete
+- `cmd/provider/main.go` — the manager entrypoint
+- `config/crd/` — generated CRD
 
-To finish it: fill in the REST client, generate CRDs and deepcopy code
-(`make generate`), and package as a Crossplane provider image.
+## Run it
+
+```bash
+cd crossplane
+kubectl apply -f config/crd/                 # install the CRD
+go run ./cmd/provider                        # run out-of-cluster (uses your az login)
+kubectl apply -f ../examples/foundryagent.yaml
+```
+
+Out-of-cluster, the provider authenticates with `DefaultAzureCredential` (your
+`az login`). Packaged as a provider image in-cluster, it uses workload identity —
+same code, no secret either way.

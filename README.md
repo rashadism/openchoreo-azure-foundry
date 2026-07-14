@@ -103,10 +103,15 @@ That means:
 The model doesn't have this caveat — it's a real Azure resource, so it's fully
 managed: created, kept in sync, and removed on teardown.
 
-## Making the agent first-class (later)
+## The agent as a first-class resource (built)
 
-To give the agent the same full lifecycle as the model, replace the Job with a
-small controller that watches an agent object and calls the API on create, update,
-and delete. A design and code skeleton for this lives in [`crossplane/`](./crossplane).
+The Job creates an agent but doesn't watch it. For full lifecycle — create,
+self-heal on drift, and delete on teardown — there's a real Crossplane provider in
+[`crossplane/`](./crossplane) that manages an agent as a `FoundryAgent` object.
 
-Until it's built, the Job is the simple, working choice.
+It's implemented and verified end-to-end against a live Foundry project: applying a
+`FoundryAgent` creates the agent, deleting it in Azure makes the controller recreate
+it, and deleting the object removes the agent via a finalizer. See
+[`crossplane/DESIGN.md`](./crossplane/DESIGN.md) to run it.
+
+The Job remains the simplest choice when you don't want to run a controller.

@@ -38,7 +38,7 @@ spec:
 
   resources:
     - id: agentJob
-      readyWhen: "${applied.agentJob.status.succeeded == 1}"
+      readyWhen: "${has(applied.agentJob.status.succeeded) && applied.agentJob.status.succeeded == 1}"
       template:
         apiVersion: batch/v1
         kind: Job

@@ -1,0 +1,12 @@
+# A prompt agent managed by the Crossplane provider (crossplane/).
+# The controller creates it, heals drift, and deletes it on teardown.
+apiVersion: foundry.openchoreo.dev/v1alpha1
+kind: FoundryAgent
+metadata:
+  name: support-bot
+spec:
+  forProvider:
+    projectEndpoint: https://<account>.services.ai.azure.com/api/projects/<project>
+    agentName: support-bot
+    model: gpt-5-mini
+    instructions: "You are a friendly support bot. Keep answers to one sentence."

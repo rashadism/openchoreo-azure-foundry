@@ -3,37 +3,35 @@ package v1alpha1
 import (
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// FoundryAgentParameters is the desired state of an agent.
+// FoundryAgentParameters is the desired state of a prompt agent.
 type FoundryAgentParameters struct {
-	// ProjectEndpoint of an existing Foundry project.
+	// ProjectEndpoint of an existing Foundry project, e.g.
+	// https://<account>.services.ai.azure.com/api/projects/<project>
 	ProjectEndpoint string `json:"projectEndpoint"`
-
+	// AgentName is the agent's unique name within the project.
 	AgentName string `json:"agentName"`
-	Image     string `json:"image"`
-
-	ModelDeploymentName string `json:"modelDeploymentName,omitempty"`
-
-	// +kubebuilder:default="1"
-	CPU string `json:"cpu,omitempty"`
-	// +kubebuilder:default="2Gi"
-	Memory string `json:"memory,omitempty"`
-	// +kubebuilder:default="responses"
-	Protocol string `json:"protocol,omitempty"`
+	// Model deployment name the agent uses.
+	Model string `json:"model"`
+	// Instructions define the agent's behaviour.
+	Instructions string `json:"instructions"`
 }
 
-// FoundryAgentObservation is the last-seen state from Azure.
+// FoundryAgentObservation is the observed state from Azure.
 type FoundryAgentObservation struct {
+	Exists  bool   `json:"exists,omitempty"`
 	Version string `json:"version,omitempty"`
-	Status  string `json:"status,omitempty"` // creating | active | failed
 }
 
+// A FoundryAgentSpec defines the desired state of a FoundryAgent.
 type FoundryAgentSpec struct {
 	xpv1.ResourceSpec `json:",inline"`
 	ForProvider       FoundryAgentParameters `json:"forProvider"`
 }
 
+// A FoundryAgentStatus represents the observed state of a FoundryAgent.
 type FoundryAgentStatus struct {
 	xpv1.ResourceStatus `json:",inline"`
 	AtProvider          FoundryAgentObservation `json:"atProvider,omitempty"`
@@ -42,11 +40,35 @@ type FoundryAgentStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
-// +kubebuilder:printcolumn:name="STATUS",type="string",JSONPath=".status.atProvider.status"
+// +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"
+// +kubebuilder:printcolumn:name="AGENT",type="string",JSONPath=".spec.forProvider.agentName"
+// +kubebuilder:resource:scope=Cluster,categories={crossplane,managed,foundry}
+
+// A FoundryAgent is a prompt agent in an Azure AI Foundry project.
 type FoundryAgent struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   FoundryAgentSpec   `json:"spec"`
 	Status FoundryAgentStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// FoundryAgentList contains a list of FoundryAgent.
+type FoundryAgentList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []FoundryAgent `json:"items"`
+}
+
+// FoundryAgent type metadata.
+var (
+	FoundryAgentKind             = "FoundryAgent"
+	FoundryAgentGroupKind        = schema.GroupKind{Group: Group, Kind: FoundryAgentKind}.String()
+	FoundryAgentGroupVersionKind = SchemeGroupVersion.WithKind(FoundryAgentKind)
+)
+
+func init() {
+	SchemeBuilder.Register(&FoundryAgent{}, &FoundryAgentList{})
 }
