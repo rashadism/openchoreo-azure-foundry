@@ -11,9 +11,10 @@ connection details into the app.
 
 | File | What it gives a developer |
 |------|---------------------------|
-| `resourcetypes/azure-foundry-model.yaml` | A model deployment (e.g. `gpt-4o-mini`) inside an existing Foundry account |
-| `resourcetypes/azure-foundry-agent.yaml` | A hosted agent running inside an existing Foundry project |
-| `examples/chatbot.yaml` | A developer asking for both, then an app using them |
+| `resourcetypes/azure-foundry-model.yaml` | A model deployment (e.g. `gpt-5-mini`) inside an existing Foundry account |
+| `resourcetypes/azure-foundry-prompt-agent.yaml` | A prompt agent (model + instructions, no code) in an existing project |
+| `resourcetypes/azure-foundry-agent.yaml` | A hosted agent (your own container) in an existing project |
+| `examples/chatbot.yaml` | A developer asking for a model + agent, then an app using them |
 
 ## How it works
 
@@ -35,6 +36,21 @@ The app's dependencies pick them up as environment variables
 
 Credentials never sit in these files. Each environment points at its own Azure
 account and its own identity, so dev and prod stay separate automatically.
+
+## Two kinds of agent
+
+Pick based on whether the developer ships their own code.
+
+| | Prompt agent | Hosted agent |
+|---|---|---|
+| What it is | Model + instructions + tools | Your own container image |
+| Needs code/image | No | Yes |
+| Extra Azure setup | None | A container registry (ACR) the project can pull from |
+| Use when | Most cases — a configured assistant | You need custom runtime logic |
+
+**Start with the prompt agent.** It's just a model and instructions, so it needs no
+registry and works with basic project access. Reach for the hosted agent only when
+you have your own container to run.
 
 ## Where's the API key?
 
