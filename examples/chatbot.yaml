@@ -1,0 +1,52 @@
+# A developer asks for a model + an agent, then a component uses them.
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Resource
+metadata:
+  name: chat-model
+  namespace: default
+spec:
+  owner:
+    projectName: chatbot
+  type:
+    kind: ClusterResourceType
+    name: azure-foundry-model
+  parameters:
+    modelName: gpt-4o-mini
+    modelVersion: "2024-07-18"
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Resource
+metadata:
+  name: chat-agent
+  namespace: default
+spec:
+  owner:
+    projectName: chatbot
+  type:
+    kind: ClusterResourceType
+    name: azure-foundry-agent
+  parameters:
+    agentName: support-bot
+    image: myacr.azurecr.io/support-bot:v1
+    modelDeploymentName: gpt-4o-mini
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: chat-frontend
+spec:
+  owner:
+    projectName: chatbot
+    componentName: chat-frontend
+  container:
+    image: myacr.azurecr.io/chat-frontend:v1
+  dependencies:
+    resources:
+      - ref: chat-agent
+        envBindings:
+          endpoint: AGENT_ENDPOINT
+      - ref: chat-model
+        envBindings:
+          deploymentName: MODEL_NAME
+          endpoint: MODEL_ENDPOINT

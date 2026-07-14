@@ -1,0 +1,78 @@
+# Creates a hosted agent in an existing Azure AI Foundry project.
+# An agent has no Azure resource type, so a one-shot Job calls the project's REST API.
+# The Job creates the agent; it does not keep watching it (see README).
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterResourceType
+metadata:
+  name: azure-foundry-agent
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      required: [agentName, image]
+      properties:
+        agentName:           { type: string }
+        image:               { type: string }
+        modelDeploymentName: { type: string }
+        cpu:                 { type: string, default: "1" }
+        memory:              { type: string, default: "2Gi" }
+        protocol:            { type: string, default: responses }
+
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      required: [projectEndpoint]
+      properties:
+        projectEndpoint: { type: string }
+        # SA linked to an Azure identity with the "Foundry Project Manager" role.
+        # Keeps creds per-environment without a secret in this file.
+        credentialServiceAccount: { type: string, default: azure-foundry-deployer }
+
+  retainPolicy: Delete
+
+  outputs:
+    - name: agentName
+      value: "${parameters.agentName}"
+    - name: endpoint
+      value: "${environmentConfigs.projectEndpoint}/agents/${parameters.agentName}"
+
+  resources:
+    - id: agentJob
+      readyWhen: "${applied.agentJob.status.succeeded == 1}"
+      template:
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: ${metadata.name}-create-agent
+          namespace: ${metadata.namespace}
+        spec:
+          backoffLimit: 4
+          template:
+            metadata:
+              labels:
+                azure.workload.identity/use: "true"
+            spec:
+              serviceAccountName: ${environmentConfigs.credentialServiceAccount}
+              restartPolicy: Never
+              containers:
+                - name: create-agent
+                  image: mcr.microsoft.com/azure-cli:2.80.0
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      set -e
+                      TOKEN=$(az account get-access-token --resource https://ai.azure.com --query accessToken -o tsv)
+                      curl -sf -X POST "${environmentConfigs.projectEndpoint}/agents?api-version=v1" \
+                        -H "Authorization: Bearer $TOKEN" \
+                        -H "Content-Type: application/json" \
+                        -d '{
+                          "name": "${parameters.agentName}",
+                          "definition": {
+                            "kind": "hosted",
+                            "container_configuration": { "image": "${parameters.image}" },
+                            "cpu": "${parameters.cpu}",
+                            "memory": "${parameters.memory}",
+                            "protocol_versions": [ { "protocol": "${parameters.protocol}", "version": "1.0.0" } ],
+                            "environment_variables": { "MODEL_DEPLOYMENT_NAME": "${parameters.modelDeploymentName}" }
+                          }
+                        }'

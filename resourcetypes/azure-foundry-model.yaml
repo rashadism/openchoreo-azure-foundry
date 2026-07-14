@@ -1,0 +1,58 @@
+# Provisions a model deployment inside an existing Azure AI Foundry account.
+# ASO manages it declaratively (create / heal / delete).
+# ASO CognitiveServices needs v2.15.0+; verify the apiVersion against your install.
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterResourceType
+metadata:
+  name: azure-foundry-model
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      required: [modelName, modelVersion]
+      properties:
+        modelName:    { type: string }
+        modelVersion: { type: string }
+        modelFormat:  { type: string, default: OpenAI }
+        skuName:      { type: string, default: GlobalStandard }
+        capacity:     { type: integer, default: 1 }
+
+  # Per-environment: account differs between dev and prod.
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      required: [accountArmId, accountEndpoint]
+      properties:
+        accountArmId:    { type: string }
+        accountEndpoint: { type: string }
+        capacity:        { type: integer }
+
+  retainPolicy: Delete
+
+  outputs:
+    - name: deploymentName
+      value: "${parameters.modelName}"
+    - name: endpoint
+      value: "${environmentConfigs.accountEndpoint}"
+
+  resources:
+    - id: modelDeployment
+      readyWhen: "${applied.modelDeployment.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')}"
+      template:
+        apiVersion: cognitiveservices.azure.com/v1api20250601
+        kind: Deployment
+        metadata:
+          name: ${metadata.name}-model
+          namespace: ${metadata.namespace}
+        spec:
+          owner:
+            armId: ${environmentConfigs.accountArmId}
+          azureName: ${parameters.modelName}
+          properties:
+            model:
+              format:  ${parameters.modelFormat}
+              name:    ${parameters.modelName}
+              version: ${parameters.modelVersion}
+          sku:
+            name:     ${parameters.skuName}
+            capacity: ${environmentConfigs.capacity}
