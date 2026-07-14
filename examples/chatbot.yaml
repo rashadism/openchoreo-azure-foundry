@@ -12,8 +12,8 @@ spec:
     kind: ClusterResourceType
     name: azure-foundry-model
   parameters:
-    modelName: gpt-4o-mini
-    modelVersion: "2024-07-18"
+    modelName: gpt-5-mini
+    modelVersion: "2025-08-07"   # illustrative — use a version your subscription offers
 ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: Resource
@@ -29,7 +29,7 @@ spec:
   parameters:
     agentName: support-bot
     image: myacr.azurecr.io/support-bot:v1
-    modelDeploymentName: gpt-4o-mini
+    modelDeploymentName: gpt-5-mini
 ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: Workload
