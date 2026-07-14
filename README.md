@@ -36,6 +36,22 @@ The app's dependencies pick them up as environment variables
 Credentials never sit in these files. Each environment points at its own Azure
 account and its own identity, so dev and prod stay separate automatically.
 
+## Where's the API key?
+
+There isn't one, on purpose.
+
+- **Agents can't use keys.** Azure only allows identity-based (Entra ID) access to
+  agents, so the app authenticates with its own Azure identity and just needs the
+  endpoint.
+- **Models default to the same.** The recommended setup is identity-based too, so
+  the model hands back an endpoint and a deployment name — no secret.
+
+That's why these types output endpoints, not keys.
+
+If you specifically need a key for the model, this repo would also have to manage
+the Foundry account (not just the deployment) and export its key into a secret.
+That's an opt-in, not the default — open an issue if you want it.
+
 ## Before you use it
 
 The platform team needs, per environment:
@@ -75,11 +91,6 @@ managed: created, kept in sync, and removed on teardown.
 
 To give the agent the same full lifecycle as the model, replace the Job with a
 small controller that watches an agent object and calls the API on create, update,
-and delete. The cleanest fit is a Crossplane provider. Two ways to build it:
+and delete. A design and code skeleton for this lives in [`crossplane/`](./crossplane).
 
-- **Custom provider (Go):** the real answer — works today, full control, clean auth.
-  It's a proper project to build and maintain.
-- **Terraform-backed:** less code, but depends on Azure's `azapi` provider adding
-  agent support, which isn't available yet.
-
-Until then, the Job is the simple, working choice.
+Until it's built, the Job is the simple, working choice.
