@@ -39,6 +39,33 @@ HTTP_TIMEOUT = float(os.environ.get("HTTP_TIMEOUT", "120"))
 
 app = FastAPI(title="agent-mcp-chat")
 
+# --- Runtime-discovered MCP tools cache --------------------------------------
+# Maps server_label -> [{"name", "description"}]. Populated when the agent emits
+# an `mcp_list_tools` item during a streamed turn, so /tools can enrich the
+# server list and later page loads see tools without a fresh discovery.
+_mcp_tools_lock = threading.Lock()
+_mcp_tools_cache: dict = {}
+
+
+def _cache_mcp_list_tools(item: dict) -> tuple:
+    """Cache tool names+descriptions from an mcp_list_tools item.
+
+    Returns (server_label, [{name, description}, ...]) or (None, None).
+    """
+    label = item.get("server_label")
+    raw = item.get("tools")
+    if not label or not isinstance(raw, list):
+        return None, None
+    tools = []
+    for t in raw:
+        if isinstance(t, dict) and t.get("name"):
+            tools.append(
+                {"name": t.get("name"), "description": t.get("description") or ""}
+            )
+    with _mcp_tools_lock:
+        _mcp_tools_cache[label] = tools
+    return label, tools
+
 # --- Entra token cache (thread-safe, refreshed ~5 min before expiry) ---------
 _cred = DefaultAzureCredential()
 _tok_lock = threading.Lock()
@@ -161,7 +188,11 @@ def tools():
             timeout=HTTP_TIMEOUT,
         )
         r.raise_for_status()
-        return {"tools": _extract_mcp_tools(r.json())}
+        servers = _extract_mcp_tools(r.json())
+        with _mcp_tools_lock:
+            for s in servers:
+                s["tools"] = list(_mcp_tools_cache.get(s.get("server_label"), []))
+        return {"tools": servers}
     except requests.HTTPError as e:
         detail = e.response.text if e.response is not None else str(e)
         return JSONResponse({"error": detail}, status_code=502)
@@ -199,6 +230,7 @@ def _stream_events(message: str, conversation_id: str | None):
     Emits: {"type":"conversation","conversation_id":...} once known,
            {"type":"delta","text":...} per output-text delta,
            {"type":"tool","server":...,"name":...,"status":...} per MCP call,
+           {"type":"tools_listed","server":...,"tools":[{name,description}]} on discovery,
            {"type":"error","error":...} on failure,
            {"type":"done"} at the end.
     """
@@ -270,7 +302,17 @@ def _stream_events(message: str, conversation_id: str | None):
                         )
                 elif etype == "response.output_item.done":
                     item = evt.get("item") or {}
-                    if item.get("type") == "mcp_call":
+                    if item.get("type") == "mcp_list_tools":
+                        label, tools_ = _cache_mcp_list_tools(item)
+                        if label is not None:
+                            yield _sse(
+                                {
+                                    "type": "tools_listed",
+                                    "server": label,
+                                    "tools": tools_,
+                                }
+                            )
+                    elif item.get("type") == "mcp_call":
                         iid = item.get("id")
                         if iid not in mcp_done:
                             mcp_done.add(iid)
@@ -282,6 +324,18 @@ def _stream_events(message: str, conversation_id: str | None):
                                     or info.get("server"),
                                     "name": item.get("name") or info.get("name"),
                                     "status": "done",
+                                }
+                            )
+                elif etype == "response.mcp_list_tools.completed":
+                    item = evt.get("item") or {}
+                    if item.get("type") == "mcp_list_tools":
+                        label, tools_ = _cache_mcp_list_tools(item)
+                        if label is not None:
+                            yield _sse(
+                                {
+                                    "type": "tools_listed",
+                                    "server": label,
+                                    "tools": tools_,
                                 }
                             )
                 elif etype == "response.error" or etype == "error":
@@ -318,7 +372,7 @@ def chat_stream(body: ChatIn):
 INDEX_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Foundry Agent + MCP chat</title>
+<title>Agentic Chatbot</title>
 <style>
   :root {
     color-scheme: light;
@@ -341,17 +395,60 @@ INDEX_HTML = """<!doctype html>
     display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
   }
   header .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex: 0 0 auto; }
+  header .titlewrap { display: flex; flex-direction: column; line-height: 1.2; }
   header .title { font-weight: 600; font-size: 15px; }
-  header .tools-pills {
-    margin-left: auto; display: flex; gap: 6px; flex-wrap: nowrap;
-    overflow: hidden; max-width: 60%; justify-content: flex-end;
+  header .subtitle { font-size: 11.5px; color: var(--muted); }
+  header .tools-btn {
+    margin-left: auto; flex: 0 0 auto;
+    font-size: 13px; font-weight: 500; color: var(--text);
+    background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+    transition: background .15s, border-color .15s;
   }
-  header .pill {
-    font-size: 12px; color: var(--muted);
+  header .tools-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
+
+  /* slide-in Tools drawer */
+  .drawer-overlay {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, .28);
+    opacity: 0; transition: opacity .2s ease; z-index: 20;
+  }
+  .drawer-overlay.open { opacity: 1; }
+  .drawer {
+    position: fixed; top: 0; right: 0; height: 100%; width: 360px; max-width: 88vw;
+    background: var(--panel); border-left: 1px solid var(--border);
+    box-shadow: -8px 0 24px rgba(15, 23, 42, .08);
+    transform: translateX(100%); transition: transform .22s ease;
+    z-index: 21; display: flex; flex-direction: column;
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px; border-bottom: 1px solid var(--border); flex: 0 0 auto;
+  }
+  .drawer-title { font-weight: 600; font-size: 14px; }
+  .drawer-close {
+    margin-left: auto; background: transparent; border: 0; color: var(--muted);
+    font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px; border-radius: 6px;
+  }
+  .drawer-close:hover { color: var(--text); }
+  .drawer-body { flex: 1 1 auto; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .drawer-empty { font-size: 13px; color: var(--muted); }
+  .srv-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--panel-2); }
+  .srv-label { font-weight: 600; font-size: 13.5px; }
+  .srv-url {
+    display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px;
+    word-break: break-all; text-decoration: none;
   }
+  .srv-url:hover { text-decoration: underline; color: var(--accent); }
+  .srv-tools { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .srv-tools li { display: flex; flex-direction: column; gap: 2px; }
+  .tool-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--accent);
+  }
+  .tool-desc { font-size: 12px; color: var(--text); line-height: 1.4; }
+  .srv-none { margin: 10px 0 0; font-size: 12px; color: var(--muted); font-style: italic; }
+  @media (max-width: 480px) { .drawer { width: 100%; max-width: 100%; } }
   #scroll { flex: 1 1 auto; overflow-y: auto; }
   #log {
     max-width: 760px; margin: 0 auto; padding: 20px 18px;
@@ -446,9 +543,22 @@ INDEX_HTML = """<!doctype html>
 <body>
 <header>
   <span class="dot"></span>
-  <span class="title">Foundry Agent + MCP</span>
-  <span class="tools-pills" id="toolPills"></span>
+  <span class="titlewrap">
+    <span class="title">Agentic Chatbot</span>
+    <span class="subtitle">Powered by Azure AI Foundry</span>
+  </span>
+  <button class="tools-btn" id="toolsBtn" type="button" aria-label="Show tools and MCP servers" aria-expanded="false">
+    <span aria-hidden="true">🧰</span> Tools
+  </button>
 </header>
+<div class="drawer-overlay" id="drawerOverlay" hidden></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-label="MCP servers and tools">
+  <div class="drawer-head">
+    <span class="drawer-title">MCP servers &amp; tools</span>
+    <button class="drawer-close" id="drawerClose" type="button" aria-label="Close">&times;</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
 <div id="scroll">
   <div id="log">
     <div class="meta">Ask a question to get started.</div>
@@ -492,23 +602,139 @@ function md(src){
   return html;
 }
 
+// --- Tools / MCP servers drawer ---------------------------------------------
+const TOOLS_LS_KEY = 'mcpToolsCache';
+const drawer = document.getElementById('drawer');
+const drawerOverlay = document.getElementById('drawerOverlay');
+const drawerBody = document.getElementById('drawerBody');
+const toolsBtn = document.getElementById('toolsBtn');
+
+let servers = [];                 // [{server_label, server_url}]
+let toolsByServer = loadToolCache(); // { label: [{name, description}] }
+
+function loadToolCache() {
+  try {
+    const raw = localStorage.getItem(TOOLS_LS_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return (obj && typeof obj === 'object') ? obj : {};
+  } catch (_) { return {}; }
+}
+function saveToolCache() {
+  try { localStorage.setItem(TOOLS_LS_KEY, JSON.stringify(toolsByServer)); } catch (_) {}
+}
+
+function renderDrawer() {
+  drawerBody.textContent = '';
+  if (!servers.length) {
+    const empty = document.createElement('div');
+    empty.className = 'drawer-empty';
+    empty.textContent = 'No MCP servers configured.';
+    drawerBody.appendChild(empty);
+    return;
+  }
+  for (const s of servers) {
+    const label = s.server_label || 'mcp';
+    const card = document.createElement('div');
+    card.className = 'srv-card';
+
+    const name = document.createElement('div');
+    name.className = 'srv-label';
+    name.textContent = label;
+    card.appendChild(name);
+
+    if (s.server_url) {
+      const url = document.createElement('a');
+      url.className = 'srv-url';
+      url.href = s.server_url;
+      url.target = '_blank';
+      url.rel = 'noopener';
+      url.textContent = s.server_url;
+      card.appendChild(url);
+    }
+
+    const tools = toolsByServer[label] || [];
+    if (tools.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'srv-tools';
+      for (const t of tools) {
+        const li = document.createElement('li');
+        const tn = document.createElement('span');
+        tn.className = 'tool-name';
+        tn.textContent = t.name || 'tool';
+        li.appendChild(tn);
+        if (t.description) {
+          const td = document.createElement('span');
+          td.className = 'tool-desc';
+          td.textContent = t.description;
+          li.appendChild(td);
+        }
+        ul.appendChild(li);
+      }
+      card.appendChild(ul);
+    } else {
+      const none = document.createElement('div');
+      none.className = 'srv-none';
+      none.textContent = 'Tools appear after first use.';
+      card.appendChild(none);
+    }
+    drawerBody.appendChild(card);
+  }
+}
+
+function updateServerTools(label, tools) {
+  if (!label || !Array.isArray(tools)) return;
+  toolsByServer[label] = tools.map(t => ({
+    name: t.name || 'tool',
+    description: t.description || ''
+  }));
+  saveToolCache();
+  renderDrawer();
+}
+
 async function loadTools() {
-  const el = document.getElementById('toolPills');
+  renderDrawer(); // show cached state immediately
   try {
     const r = await fetch('/tools');
     if (!r.ok) return;
     const data = await r.json();
     const list = (data && Array.isArray(data.tools)) ? data.tools : [];
-    el.textContent = '';
+    servers = list.map(t => ({ server_label: t.server_label, server_url: t.server_url }));
     for (const t of list) {
-      const pill = document.createElement('span');
-      pill.className = 'pill';
-      pill.title = t.server_url || '';
-      pill.textContent = t.server_label || 'mcp';
-      el.appendChild(pill);
+      if (t.server_label && Array.isArray(t.tools) && t.tools.length) {
+        toolsByServer[t.server_label] = t.tools.map(x => ({
+          name: x.name || 'tool', description: x.description || ''
+        }));
+      }
     }
-  } catch (_) { /* leave header pills empty on failure */ }
+    saveToolCache();
+    renderDrawer();
+  } catch (_) { /* keep cached render on failure */ }
 }
+
+function openDrawer() {
+  drawerOverlay.hidden = false;
+  requestAnimationFrame(() => {
+    drawerOverlay.classList.add('open');
+    drawer.classList.add('open');
+  });
+  drawer.setAttribute('aria-hidden', 'false');
+  toolsBtn.setAttribute('aria-expanded', 'true');
+}
+function closeDrawer() {
+  drawerOverlay.classList.remove('open');
+  drawer.classList.remove('open');
+  drawer.setAttribute('aria-hidden', 'true');
+  toolsBtn.setAttribute('aria-expanded', 'false');
+  setTimeout(() => { drawerOverlay.hidden = true; }, 220);
+}
+
+toolsBtn.addEventListener('click', openDrawer);
+drawerOverlay.addEventListener('click', closeDrawer);
+document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
+});
+
 loadTools();
 
 function atBottom() {
@@ -664,6 +890,8 @@ form.addEventListener('submit', async (e) => {
           render(true);
         } else if (evt.type === 'tool') {
           toolEvent(evt);
+        } else if (evt.type === 'tools_listed') {
+          updateServerTools(evt.server, evt.tools);
         } else if (evt.type === 'error') {
           errored = true;
           bot.className = 'msg error';
