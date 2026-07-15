@@ -5,6 +5,7 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/rashadism/provider-foundry/apis/v1alpha1"
 	"github.com/rashadism/provider-foundry/internal/controller/foundryagent"
@@ -19,7 +20,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{})
+	// Disable the metrics server; its default :8080 bind collides with the
+	// OpenChoreo gateway when running out-of-cluster.
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Metrics: metricsserver.Options{BindAddress: "0"},
+	})
 	if err != nil {
 		panic(err)
 	}

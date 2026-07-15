@@ -7,6 +7,20 @@ The platform team installs these once. Developers then just say "give me a model
 and "give me an agent," and the platform provisions them in Azure and wires the
 connection details into the app.
 
+## Recommended setup
+
+Two operators, split by which plane the resource lives on:
+
+- **Models → Azure Service Operator (ASO).** A model deployment is a control-plane
+  (ARM) resource, so ASO reconciles it declaratively. Use `azure-foundry-model.yaml`.
+- **Agents → the Crossplane provider** (`crossplane/`). An agent is data-plane only
+  (no ARM type), so ASO can't touch it; the provider manages it as a `FoundryAgent`
+  CR. Use `azure-foundry-prompt-agent-xp.yaml`.
+
+The Job-based agent types (`azure-foundry-prompt-agent.yaml`, `azure-foundry-agent.yaml`)
+are the no-operator fallback — simplest to run, but create-once (no self-heal or
+delete-on-teardown).
+
 ## What's here
 
 | File | What it gives a developer |
