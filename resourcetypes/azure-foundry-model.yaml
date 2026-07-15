@@ -9,7 +9,7 @@ spec:
   parameters:
     openAPIV3Schema:
       type: object
-      required: [modelName, modelVersion]
+      required: [modelName]
       properties:
         modelName:
           type: string
@@ -41,10 +41,16 @@ spec:
             - o3
             - o3-mini
             - o4-mini
+        # Optional: omit to use the model's current default version.
         modelVersion: { type: string }
         modelFormat:  { type: string, default: OpenAI }
-        skuName:      { type: string, default: GlobalStandard }
-        capacity:     { type: integer, default: 1 }
+        # Deployment tier (per-token vs zone-scoped vs reserved capacity).
+        skuName:
+          type: string
+          default: GlobalStandard
+          enum: [GlobalStandard, Standard, DataZoneStandard, ProvisionedManaged]
+        # Rate limit in thousands of tokens/min (1 = 1k TPM). Bounded by your model quota.
+        capacity:     { type: integer, default: 10 }
 
   # Per-environment: account differs between dev and prod.
   environmentConfigs:

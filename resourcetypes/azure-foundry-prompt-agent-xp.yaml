@@ -10,14 +10,21 @@ spec:
   parameters:
     openAPIV3Schema:
       type: object
-      required: [agentName, modelDeploymentName, instructions]
+      required: [agentName, modelDeploymentName]
       properties:
         agentName:           { type: string }
         modelDeploymentName: { type: string }
-        instructions:        { type: string }
-        # Optional MCP tool. Leave mcpServerUrl empty for a plain agent.
-        mcpServerLabel:      { type: string, default: "" }
-        mcpServerUrl:        { type: string, default: "" }
+        instructions:        { type: string, default: "You are a helpful assistant." }
+        # Zero or more MCP tool servers.
+        mcpServers:
+          type: array
+          default: []
+          items:
+            type: object
+            required: [serverLabel, serverUrl]
+            properties:
+              serverLabel: { type: string }
+              serverUrl:   { type: string }
   environmentConfigs:
     openAPIV3Schema:
       type: object
@@ -44,5 +51,5 @@ spec:
             agentName:       ${parameters.agentName}
             model:           ${parameters.modelDeploymentName}
             instructions:    ${parameters.instructions}
-            # Conditionally attach an MCP tool when mcpServerUrl is set.
-            mcpTools: '${parameters.mcpServerUrl == "" ? [] : [{"serverLabel": parameters.mcpServerLabel, "serverURL": parameters.mcpServerUrl, "requireApproval": "never"}]}'
+            # Map each mcpServers[] entry into a FoundryAgent MCP tool (auto-approved).
+            mcpTools: '${parameters.mcpServers.map(s, {"serverLabel": s.serverLabel, "serverURL": s.serverUrl, "requireApproval": "never"})}'

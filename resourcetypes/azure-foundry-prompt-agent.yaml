@@ -9,11 +9,21 @@ spec:
   parameters:
     openAPIV3Schema:
       type: object
-      required: [agentName, modelDeploymentName, instructions]
+      required: [agentName, modelDeploymentName]
       properties:
         agentName:           { type: string }
         modelDeploymentName: { type: string }
-        instructions:        { type: string }
+        instructions:        { type: string, default: "You are a helpful assistant." }
+        # Zero or more MCP tool servers.
+        mcpServers:
+          type: array
+          default: []
+          items:
+            type: object
+            required: [serverLabel, serverUrl]
+            properties:
+              serverLabel: { type: string }
+              serverUrl:   { type: string }
 
   environmentConfigs:
     openAPIV3Schema:
@@ -65,6 +75,7 @@ spec:
                           "definition": {
                             "kind": "prompt",
                             "model": "${parameters.modelDeploymentName}",
-                            "instructions": "${parameters.instructions}"
+                            "instructions": "${parameters.instructions}",
+                            "tools": ${parameters.mcpServers.map(s, {"type": "mcp", "server_label": s.serverLabel, "server_url": s.serverUrl, "require_approval": "never"})}
                           }
                         }'
