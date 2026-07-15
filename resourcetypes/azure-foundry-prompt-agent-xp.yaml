@@ -32,9 +32,7 @@ spec:
       value: "${environmentConfigs.projectEndpoint}/agents/${parameters.agentName}"
   resources:
     - id: agent
-      # The FoundryAgent CR carries a Ready condition, but applied.<id> status
-      # isn't surfaced live for readyWhen in this OpenChoreo version, so rely on
-      # the default health heuristic instead.
+      readyWhen: "${applied.agent.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')}"
       template:
         apiVersion: foundry.openchoreo.dev/v1alpha1
         kind: FoundryAgent
