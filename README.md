@@ -13,6 +13,7 @@ connection details into the app.
 |------|---------------------------|
 | `resourcetypes/azure-foundry-model.yaml` | A model deployment (e.g. `gpt-5-mini`) inside an existing Foundry account |
 | `resourcetypes/azure-foundry-prompt-agent.yaml` | A prompt agent (model + instructions, no code) in an existing project |
+| `resourcetypes/azure-foundry-prompt-agent-xp.yaml` | Same prompt agent, but emits a `FoundryAgent` CR handled by the Crossplane provider (no Job) |
 | `resourcetypes/azure-foundry-agent.yaml` | A hosted agent (your own container) in an existing project |
 | `examples/chatbot.yaml` | A developer asking for a model + agent, then an app using them |
 
@@ -113,5 +114,10 @@ It's implemented and verified end-to-end against a live Foundry project: applyin
 `FoundryAgent` creates the agent, deleting it in Azure makes the controller recreate
 it, and deleting the object removes the agent via a finalizer. See
 [`crossplane/DESIGN.md`](./crossplane/DESIGN.md) to run it.
+
+The two halves wire together via
+[`resourcetypes/azure-foundry-prompt-agent-xp.yaml`](./resourcetypes/azure-foundry-prompt-agent-xp.yaml):
+a developer's `Resource` renders a `FoundryAgent` CR, which the provider reconciles —
+so you get the dev-facing Resource abstraction *and* full lifecycle, with no Job or token.
 
 The Job remains the simplest choice when you don't want to run a controller.
