@@ -6,6 +6,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// MCPTool attaches an MCP tool server to the agent.
+type MCPTool struct {
+	ServerLabel string `json:"serverLabel"`
+	ServerURL   string `json:"serverURL"`
+	// RequireApproval: "never" (default) auto-approves tool calls.
+	RequireApproval string `json:"requireApproval,omitempty"`
+}
+
 // FoundryAgentParameters is the desired state of a prompt agent.
 type FoundryAgentParameters struct {
 	// ProjectEndpoint of an existing Foundry project, e.g.
@@ -17,6 +25,8 @@ type FoundryAgentParameters struct {
 	Model string `json:"model"`
 	// Instructions define the agent's behaviour.
 	Instructions string `json:"instructions"`
+	// MCPTools attaches MCP tool servers to the agent.
+	MCPTools []MCPTool `json:"mcpTools,omitempty"`
 }
 
 // FoundryAgentObservation is the observed state from Azure.

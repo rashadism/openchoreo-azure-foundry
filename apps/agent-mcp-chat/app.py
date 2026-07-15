@@ -43,6 +43,11 @@ _tok = {"value": None, "exp": 0.0}
 
 
 def _token() -> str:
+    # Interim path for testing before a service principal: use a pre-issued
+    # token (e.g. an `az` token) when AZURE_AI_TOKEN is set.
+    static = os.environ.get("AZURE_AI_TOKEN")
+    if static:
+        return static
     with _tok_lock:
         if not _tok["value"] or time.time() > _tok["exp"] - 300:
             t = _cred.get_token(ENTRA_SCOPE)

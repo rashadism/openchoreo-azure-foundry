@@ -72,13 +72,13 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	cr := mg.(*v1alpha1.FoundryAgent)
 	cr.SetConditions(xpv1.Creating())
 	p := cr.Spec.ForProvider
-	return managed.ExternalCreation{}, e.foundry.Upsert(ctx, p.AgentName, p.Model, p.Instructions)
+	return managed.ExternalCreation{}, e.foundry.Upsert(ctx, p.AgentName, p.Model, p.Instructions, mcpTools(p))
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
 	cr := mg.(*v1alpha1.FoundryAgent)
 	p := cr.Spec.ForProvider
-	return managed.ExternalUpdate{}, e.foundry.Upsert(ctx, p.AgentName, p.Model, p.Instructions)
+	return managed.ExternalUpdate{}, e.foundry.Upsert(ctx, p.AgentName, p.Model, p.Instructions, mcpTools(p))
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
@@ -88,3 +88,21 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (e *external) Disconnect(ctx context.Context) error { return nil }
+
+// mcpTools builds the Foundry `tools` array from the CR's MCPTools.
+func mcpTools(p v1alpha1.FoundryAgentParameters) []map[string]any {
+	var tools []map[string]any
+	for _, m := range p.MCPTools {
+		ra := m.RequireApproval
+		if ra == "" {
+			ra = "never"
+		}
+		tools = append(tools, map[string]any{
+			"type":             "mcp",
+			"server_label":     m.ServerLabel,
+			"server_url":       m.ServerURL,
+			"require_approval": ra,
+		})
+	}
+	return tools
+}

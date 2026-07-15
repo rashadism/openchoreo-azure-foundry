@@ -110,14 +110,20 @@ func (c *Client) Get(ctx context.Context, name string) (bool, AgentDef, error) {
 }
 
 // Upsert creates or updates the prompt agent (POST is content-addressable).
-func (c *Client) Upsert(ctx context.Context, name, model, instructions string) error {
+// tools, when non-empty, is passed through as the definition's tools array
+// (e.g. MCP tool entries).
+func (c *Client) Upsert(ctx context.Context, name, model, instructions string, tools []map[string]any) error {
+	def := map[string]any{
+		"kind":         "prompt",
+		"model":        model,
+		"instructions": instructions,
+	}
+	if len(tools) > 0 {
+		def["tools"] = tools
+	}
 	payload, _ := json.Marshal(map[string]any{
-		"name": name,
-		"definition": map[string]any{
-			"kind":         "prompt",
-			"model":        model,
-			"instructions": instructions,
-		},
+		"name":       name,
+		"definition": def,
 	})
 	url := fmt.Sprintf("%s/agents?api-version=v1", c.endpoint)
 	code, body, err := c.do(ctx, http.MethodPost, url, payload)

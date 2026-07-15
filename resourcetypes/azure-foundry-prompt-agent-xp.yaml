@@ -15,6 +15,9 @@ spec:
         agentName:           { type: string }
         modelDeploymentName: { type: string }
         instructions:        { type: string }
+        # Optional MCP tool. Leave mcpServerUrl empty for a plain agent.
+        mcpServerLabel:      { type: string, default: "" }
+        mcpServerUrl:        { type: string, default: "" }
   environmentConfigs:
     openAPIV3Schema:
       type: object
@@ -29,7 +32,9 @@ spec:
       value: "${environmentConfigs.projectEndpoint}/agents/${parameters.agentName}"
   resources:
     - id: agent
-      readyWhen: "${applied.agent.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')}"
+      # The FoundryAgent CR carries a Ready condition, but applied.<id> status
+      # isn't surfaced live for readyWhen in this OpenChoreo version, so rely on
+      # the default health heuristic instead.
       template:
         apiVersion: foundry.openchoreo.dev/v1alpha1
         kind: FoundryAgent
@@ -41,3 +46,5 @@ spec:
             agentName:       ${parameters.agentName}
             model:           ${parameters.modelDeploymentName}
             instructions:    ${parameters.instructions}
+            # Conditionally attach an MCP tool when mcpServerUrl is set.
+            mcpTools: '${parameters.mcpServerUrl == "" ? [] : [{"serverLabel": parameters.mcpServerLabel, "serverURL": parameters.mcpServerUrl, "requireApproval": "never"}]}'

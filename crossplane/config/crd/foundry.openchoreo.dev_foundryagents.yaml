@@ -77,6 +77,24 @@ spec:
                   instructions:
                     description: Instructions define the agent's behaviour.
                     type: string
+                  mcpTools:
+                    description: MCPTools attaches MCP tool servers to the agent.
+                    items:
+                      description: MCPTool attaches an MCP tool server to the agent.
+                      properties:
+                        requireApproval:
+                          description: 'RequireApproval: "never" (default) auto-approves
+                            tool calls.'
+                          type: string
+                        serverLabel:
+                          type: string
+                        serverURL:
+                          type: string
+                      required:
+                      - serverLabel
+                      - serverURL
+                      type: object
+                    type: array
                   model:
                     description: Model deployment name the agent uses.
                     type: string

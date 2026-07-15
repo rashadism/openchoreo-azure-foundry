@@ -1,0 +1,42 @@
+# References a model deployment that ALREADY exists on the Foundry account
+# (e.g. pre-provisioned by the cloud team, or by az while ASO isn't installed).
+# It provisions nothing — it just surfaces the deployment name + endpoint as
+# outputs so components can depend on it like any other Resource.
+# The productized path is azure-foundry-model.yaml (ASO); use this when you can't
+# run ASO yet but still want the Resource/dependency wiring.
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterResourceType
+metadata:
+  name: azure-foundry-model-ref
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      required: [modelName]
+      properties:
+        modelName: { type: string }
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      required: [endpoint]
+      properties:
+        endpoint: { type: string }        # Foundry project endpoint
+  retainPolicy: Delete
+  outputs:
+    - name: deploymentName
+      value: "${parameters.modelName}"
+    - name: endpoint
+      value: "${environmentConfigs.endpoint}"
+  resources:
+    # No real provisioning (the deployment already exists); a ConfigMap is a
+    # harmless placeholder so the type validates and the binding reports ready.
+    - id: ref
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${metadata.name}-model-ref
+          namespace: ${metadata.namespace}
+        data:
+          deploymentName: "${parameters.modelName}"
+          endpoint: "${environmentConfigs.endpoint}"
