@@ -1,0 +1,11 @@
+# Pinned for the OpenChoreo + Azure AI Foundry demo.
+# azure-ai-projects >= 2.x exposes get_openai_client() returning an AzureOpenAI
+# client wired to the project's /openai/v1 surface (Responses + Conversations).
+azure-ai-projects==2.3.0
+azure-identity==1.19.0
+# openai is a transitive dependency of azure-ai-projects, pinned here so the
+# Conversations API (client.conversations.create) is guaranteed available.
+openai==2.2.0
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4

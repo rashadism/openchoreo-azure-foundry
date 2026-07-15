@@ -1,0 +1,51 @@
+# Workload — brings your own (BYO) built image. Workload name == component name.
+#
+# Secrets: the app authenticates to Foundry with an Entra service principal. Its
+# three env vars (AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_CLIENT_SECRET) must NOT
+# be inlined here — they come from the platform secret store via a SecretReference.
+# The exact SecretReference schema depends on your platform's secret backend; see
+# the README "Wiring the service principal" section. The commented block below shows
+# the intended shape (adjust key names to your installed SecretReference type).
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: chat-models
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: chat-models
+  container:
+    image: <registry>/chat-models:latest   # placeholder — replace at build/publish time
+    env:
+      - key: PORT
+        value: "8080"
+      # --- Entra service principal from the platform secret store -------------
+      # Replace secretRef/key with your SecretReference's actual fields.
+      # - key: AZURE_CLIENT_ID
+      #   valueFrom:
+      #     secretRef: {name: chat-models-sp, key: AZURE_CLIENT_ID}
+      # - key: AZURE_TENANT_ID
+      #   valueFrom:
+      #     secretRef: {name: chat-models-sp, key: AZURE_TENANT_ID}
+      # - key: AZURE_CLIENT_SECRET
+      #   valueFrom:
+      #     secretRef: {name: chat-models-sp, key: AZURE_CLIENT_SECRET}
+  endpoints:
+    http:
+      port: 8080
+      type: HTTP                            # user-visitable UI endpoint
+  dependencies:
+    resources:
+      # Each dependency injects the resolved deployment name (and, for the first,
+      # the shared project endpoint) into the container env under the given keys.
+      - ref: chat-model-a
+        envBindings:
+          deploymentName: MODEL_1
+          endpoint: FOUNDRY_PROJECT_ENDPOINT
+      - ref: chat-model-b
+        envBindings:
+          deploymentName: MODEL_2
+      - ref: chat-model-c
+        envBindings:
+          deploymentName: MODEL_3

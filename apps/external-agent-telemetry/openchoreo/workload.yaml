@@ -1,0 +1,56 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: telemetry-agent
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: telemetry-agent
+  container:
+    image: <registry>/telemetry-agent:latest
+    env:
+      # Non-secret config
+      - key: PORT
+        value: "8080"
+      - key: MODEL_DEPLOYMENT
+        value: "gpt-4o-mini"
+      - key: AGENT_ID
+        value: "openchoreo-telemetry-agent-v1"
+      - key: AGENT_NAME
+        value: "OpenChoreo Telemetry Agent"
+      # --- Secrets (sourced from the platform secret store, NOT a Resource) ------
+      # These reference a SecretReference named "telemetry-agent-secrets". The exact
+      # env-from-secret field shape depends on your OpenChoreo build; see README.
+      # The intent: inject these four values without a dependencies.resources[] entry.
+      - key: APPLICATIONINSIGHTS_CONNECTION_STRING
+        valueFrom:
+          secretRef:
+            name: telemetry-agent-secrets
+            key: APPLICATIONINSIGHTS_CONNECTION_STRING
+      - key: FOUNDRY_PROJECT_ENDPOINT
+        valueFrom:
+          secretRef:
+            name: telemetry-agent-secrets
+            key: FOUNDRY_PROJECT_ENDPOINT
+      - key: AZURE_CLIENT_ID
+        valueFrom:
+          secretRef:
+            name: telemetry-agent-secrets
+            key: AZURE_CLIENT_ID
+      - key: AZURE_TENANT_ID
+        valueFrom:
+          secretRef:
+            name: telemetry-agent-secrets
+            key: AZURE_TENANT_ID
+      - key: AZURE_CLIENT_SECRET
+        valueFrom:
+          secretRef:
+            name: telemetry-agent-secrets
+            key: AZURE_CLIENT_SECRET
+  endpoints:
+    http:
+      port: 8080
+      type: HTTP
+  # NOTE: intentionally NO dependencies.resources[]. All Azure endpoints/tokens
+  # arrive as secrets via SecretReference, per the design.

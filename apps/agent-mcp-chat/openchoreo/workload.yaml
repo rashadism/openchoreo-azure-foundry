@@ -1,0 +1,34 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: agent-mcp-chat
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: agent-mcp-chat
+  container:
+    image: <registry>/agent-mcp-chat:latest
+    env:
+      - key: PORT
+        value: "8080"
+      - key: AGENT_NAME
+        value: "mcp-agent"
+      # FOUNDRY_PROJECT_ENDPOINT and the service-principal creds
+      # (AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_CLIENT_SECRET) come from a
+      # SecretReference / platform secret store rather than being inlined here.
+      # See README "Secrets" for the SecretReference wiring.
+  endpoints:
+    http:
+      port: 8080
+      type: HTTP
+  dependencies:
+    resources:
+      # Optional: an agent Resource (ClusterResourceType azure-foundry-prompt-agent-xp)
+      # that provisions the Foundry agent. NOTE: that ResourceType does not yet
+      # accept a tools/MCP array, so for now the agent is created WITH the MCP tool
+      # by create_agent.py. See agent-resource.yaml and the README "tools passthrough gap".
+      - ref: mcp-agent
+        envBindings:
+          endpoint: AGENT_ENDPOINT
+          agentName: AGENT_NAME

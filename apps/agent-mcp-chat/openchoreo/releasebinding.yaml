@@ -1,0 +1,15 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: agent-mcp-chat-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: agent-mcp-chat
+  environment: development
+  # releaseName is the auto-cut release produced for this component/workload.
+  # Replace with the concrete release name once autoDeploy cuts it, e.g.
+  # agent-mcp-chat-<hash>.
+  releaseName: <auto-cut>
+  state: Active

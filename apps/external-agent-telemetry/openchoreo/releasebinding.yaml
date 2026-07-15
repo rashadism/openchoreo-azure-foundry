@@ -1,0 +1,14 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: telemetry-agent-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: telemetry-agent
+  environment: development
+  # releaseName is auto-cut by OpenChoreo when autoDeploy runs a build; fill in the
+  # actual release name if you bind an existing release manually.
+  releaseName: <auto-cut>
+  state: Active

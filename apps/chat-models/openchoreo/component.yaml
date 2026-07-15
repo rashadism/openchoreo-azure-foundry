@@ -1,0 +1,13 @@
+# Component — a web application (service that exposes a user-visitable HTTP UI).
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: chat-models
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/web-application
+  autoDeploy: true

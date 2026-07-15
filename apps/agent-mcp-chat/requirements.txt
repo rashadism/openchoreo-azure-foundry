@@ -1,0 +1,9 @@
+# Foundry SDK (the "new" projects API >= 2.x). Not strictly required by app.py,
+# which calls the REST endpoints directly, but pinned as the supported SDK path
+# and used if you switch app.py to AIProjectClient.get_openai_client(...).
+azure-ai-projects>=2.3.0,<3
+azure-identity>=1.19.0,<2
+requests>=2.32.0,<3
+fastapi>=0.115.0,<1
+uvicorn[standard]>=0.30.0,<1
+pydantic>=2.7.0,<3

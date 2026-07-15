@@ -1,0 +1,48 @@
+# Three Foundry model Resources. Each is backed by the ASO-integrated
+# ClusterResourceType "azure-foundry-model" and provisions/points at one model
+# deployment on the shared Foundry account. Their resolved deployment names are
+# injected into the Workload as MODEL_1 / MODEL_2 / MODEL_3.
+apiVersion: openchoreo.dev/v1alpha1
+kind: Resource
+metadata:
+  name: chat-model-a
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  type:
+    kind: ClusterResourceType
+    name: azure-foundry-model
+  parameters:
+    modelName: gpt-5-mini
+    modelVersion: "2025-08-07"
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Resource
+metadata:
+  name: chat-model-b
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  type:
+    kind: ClusterResourceType
+    name: azure-foundry-model
+  parameters:
+    modelName: gpt-5-nano
+    modelVersion: "2025-08-07"
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Resource
+metadata:
+  name: chat-model-c
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  type:
+    kind: ClusterResourceType
+    name: azure-foundry-model
+  parameters:
+    modelName: gpt-5.1
+    modelVersion: "2025-11-13"

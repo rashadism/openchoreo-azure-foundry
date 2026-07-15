@@ -1,0 +1,57 @@
+# Bindings that place the auto-cut Release + model Resources into the
+# `development` environment.
+#
+# ReleaseBinding — binds the component's auto-cut Release to `development`.
+# releaseName is the name of the Release OpenChoreo cuts on deploy; substitute the
+# actual value (visible on the Component/Release status once autoDeploy runs).
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: chat-models-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: chat-models
+  environment: development
+  releaseName: <auto-cut>   # e.g. chat-models-<hash>; fill from Release.status
+  state: Active
+---
+# ResourceReleaseBinding (x3) — each model Resource cuts its own Release; these
+# bindings place them into `development`. `resourceRelease` is filled from
+# Resource.status.latestRelease.name once each Resource reconciles (stubbed here).
+apiVersion: openchoreo.dev/v1alpha1
+kind: ResourceReleaseBinding
+metadata:
+  name: chat-model-a-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  environment: development
+  resourceRelease: <chat-model-a Resource.status.latestRelease.name>
+  state: Active
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ResourceReleaseBinding
+metadata:
+  name: chat-model-b-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  environment: development
+  resourceRelease: <chat-model-b Resource.status.latestRelease.name>
+  state: Active
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ResourceReleaseBinding
+metadata:
+  name: chat-model-c-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  environment: development
+  resourceRelease: <chat-model-c Resource.status.latestRelease.name>
+  state: Active
