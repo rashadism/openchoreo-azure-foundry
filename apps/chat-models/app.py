@@ -255,6 +255,36 @@ INDEX_HTML = """<!doctype html>
     animation: caret 1.05s step-end infinite;
   }
   @keyframes caret { 50% { opacity: 0; } }
+  /* Rendered markdown inside bot bubbles (light theme, minimal) */
+  .bot .bubble { white-space: normal; }
+  .bot .bubble > :first-child { margin-top: 0; }
+  .bot .bubble > :last-child { margin-bottom: 0; }
+  .bot .bubble p { margin: 0 0 8px; }
+  .bot .bubble strong { font-weight: 600; }
+  .bot .bubble em { font-style: italic; }
+  .bot .bubble a { color: var(--accent); text-decoration: underline; }
+  .bot .bubble code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em; padding: 1px 5px; border-radius: 5px;
+    background: color-mix(in srgb, currentColor 9%, transparent);
+  }
+  .bot .bubble pre {
+    margin: 8px 0; padding: 10px 12px; border-radius: 8px;
+    background: color-mix(in srgb, currentColor 6%, transparent);
+    border: 1px solid var(--border); overflow-x: auto;
+  }
+  .bot .bubble pre code {
+    display: block; padding: 0; border-radius: 0;
+    background: none; font-size: 0.85em; white-space: pre;
+  }
+  .bot .bubble ul, .bot .bubble ol { margin: 8px 0; padding-left: 22px; }
+  .bot .bubble li { margin: 2px 0; }
+  .bot .bubble h1, .bot .bubble h2, .bot .bubble h3 {
+    margin: 12px 0 6px; font-weight: 600; line-height: 1.3;
+  }
+  .bot .bubble h1 { font-size: 1.25em; }
+  .bot .bubble h2 { font-size: 1.12em; }
+  .bot .bubble h3 { font-size: 1.02em; }
   form {
     display: flex; gap: 8px; align-items: flex-end;
     margin-top: 12px; padding: 8px;
@@ -293,6 +323,29 @@ INDEX_HTML = """<!doctype html>
     <button type="submit" id="send">Send</button>
   </form>
 <script>
+  // ---- Safe markdown renderer (escapes HTML first, so it's XSS-safe) ----------
+  function mdEscape(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+  function md(src){
+    const blocks=[];
+    src=src.replace(/```(\\w*)\\n?([\\s\\S]*?)```/g,(m,l,code)=>{blocks.push('<pre><code>'+mdEscape(code.replace(/\\n$/,''))+'</code></pre>');return 'ZZCBZZ'+(blocks.length-1)+'ZZ';});
+    src=mdEscape(src);
+    src=src.replace(/`([^`\\n]+)`/g,'<code>$1</code>');
+    src=src.replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>');
+    src=src.replace(/(^|[^*])\\*([^*\\n]+)\\*/g,'$1<em>$2</em>');
+    src=src.replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^)\\s]+)\\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+    const lines=src.split('\\n');const out=[];let list=null;
+    const closeList=()=>{if(list){out.push('</'+list+'>');list=null;}};
+    for(const line of lines){let m;
+      if(/^ZZCBZZ\\d+ZZ$/.test(line.trim())){closeList();out.push(line.trim());continue;}
+      if(m=line.match(/^(#{1,3})\\s+(.*)$/)){closeList();out.push('<h'+m[1].length+'>'+m[2]+'</h'+m[1].length+'>');continue;}
+      if(m=line.match(/^\\s*[-*]\\s+(.*)$/)){if(list!=='ul'){closeList();out.push('<ul>');list='ul';}out.push('<li>'+m[1]+'</li>');continue;}
+      if(m=line.match(/^\\s*\\d+\\.\\s+(.*)$/)){if(list!=='ol'){closeList();out.push('<ol>');list='ol';}out.push('<li>'+m[1]+'</li>');continue;}
+      closeList();if(line.trim()==='')continue;out.push('<p>'+line+'</p>');}
+    closeList();
+    let html=out.join('\\n');html=html.replace(/ZZCBZZ(\\d+)ZZ/g,(m,i)=>blocks[i]);
+    return html;
+  }
+
   // Conversation id is kept client-side for this browser session and echoed to
   // /chat/stream on every turn so history is maintained server-side by the Responses API.
   let conversationId = null;
@@ -346,7 +399,6 @@ INDEX_HTML = """<!doctype html>
     // Bot bubble starts as a "typing…" indicator until the first token lands.
     const bubble = addRow('bot', model);
     bubble.innerHTML = '<span class="typing" aria-label="Assistant is typing"><span></span><span></span><span></span></span>';
-    const textSpan = document.createElement('span');
     const caret = document.createElement('span');
     caret.className = 'caret';
     let started = false, acc = '';
@@ -382,17 +434,19 @@ INDEX_HTML = """<!doctype html>
             if (!started) {
               started = true;
               bubble.textContent = '';
-              bubble.appendChild(textSpan);
-              bubble.appendChild(caret);
             }
             acc += data.delta;
-            textSpan.textContent = acc;
+            // Render accumulated markdown as HTML; re-append the blinking caret
+            // since innerHTML replaces the bubble's children each update.
+            bubble.innerHTML = md(acc);
+            bubble.appendChild(caret);
             scroll();
           }
         }
       }
-      caret.remove();
-      if (!started) { bubble.textContent = '(no response)'; }
+      // Final render with no caret (innerHTML drops the caret node).
+      if (started) { bubble.innerHTML = md(acc); }
+      else { bubble.textContent = '(no response)'; }
     } catch (err) {
       caret.remove();
       bubble.classList.add('error');

@@ -113,6 +113,62 @@ def healthz():
     return {"status": "ok", "agent": AGENT_NAME, "endpoint_set": bool(ENDPOINT)}
 
 
+def _extract_mcp_tools(agent: dict) -> list:
+    """Pull the MCP servers out of an agent definition.
+
+    The tools array can live under versions.latest.definition.tools or
+    definition.tools depending on the shape returned. Returns a list of
+    {server_label, server_url} for every tool with type == "mcp".
+    """
+    tools = None
+    versions = agent.get("versions")
+    if isinstance(versions, dict):
+        latest = versions.get("latest")
+        if isinstance(latest, dict):
+            definition = latest.get("definition")
+            if isinstance(definition, dict):
+                tools = definition.get("tools")
+    if tools is None:
+        definition = agent.get("definition")
+        if isinstance(definition, dict):
+            tools = definition.get("tools")
+    if tools is None:
+        tools = agent.get("tools")
+    out = []
+    if isinstance(tools, list):
+        for t in tools:
+            if isinstance(t, dict) and t.get("type") == "mcp":
+                out.append(
+                    {
+                        "server_label": t.get("server_label"),
+                        "server_url": t.get("server_url"),
+                    }
+                )
+    return out
+
+
+@app.get("/tools")
+def tools():
+    """Return the agent's configured MCP servers as [{server_label, server_url}]."""
+    if not ENDPOINT:
+        return JSONResponse(
+            {"error": "FOUNDRY_PROJECT_ENDPOINT is not set"}, status_code=500
+        )
+    try:
+        r = requests.get(
+            f"{ENDPOINT}/agents/{AGENT_NAME}?api-version=v1",
+            headers=_headers(),
+            timeout=HTTP_TIMEOUT,
+        )
+        r.raise_for_status()
+        return {"tools": _extract_mcp_tools(r.json())}
+    except requests.HTTPError as e:
+        detail = e.response.text if e.response is not None else str(e)
+        return JSONResponse({"error": detail}, status_code=502)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/chat")
 def chat(body: ChatIn):
     """Non-streaming reply (kept for API compatibility / debugging)."""
@@ -142,6 +198,7 @@ def _stream_events(message: str, conversation_id: str | None):
 
     Emits: {"type":"conversation","conversation_id":...} once known,
            {"type":"delta","text":...} per output-text delta,
+           {"type":"tool","server":...,"name":...,"status":...} per MCP call,
            {"type":"error","error":...} on failure,
            {"type":"done"} at the end.
     """
@@ -165,6 +222,12 @@ def _stream_events(message: str, conversation_id: str | None):
             if r.status_code >= 400:
                 r.raise_for_status()
             got_text = False
+            # Track MCP calls by item id so a bare completed/done event can be
+            # matched back to its server_label/name. `mcp_done` guards against
+            # emitting a duplicate "done" when both completed + output_item.done
+            # arrive for the same call.
+            mcp_calls = {}
+            mcp_done = set()
             for raw in r.iter_lines(decode_unicode=True):
                 if not raw or not raw.startswith("data:"):
                     continue
@@ -181,6 +244,46 @@ def _stream_events(message: str, conversation_id: str | None):
                     if delta:
                         got_text = True
                         yield _sse({"type": "delta", "text": delta})
+                elif etype == "response.output_item.added":
+                    item = evt.get("item") or {}
+                    if item.get("type") == "mcp_call":
+                        info = {
+                            "server": item.get("server_label"),
+                            "name": item.get("name"),
+                        }
+                        iid = item.get("id")
+                        if iid:
+                            mcp_calls[iid] = info
+                        yield _sse({"type": "tool", **info, "status": "running"})
+                elif etype == "response.mcp_call.completed":
+                    iid = evt.get("item_id")
+                    if iid not in mcp_done:
+                        mcp_done.add(iid)
+                        info = mcp_calls.get(iid, {})
+                        yield _sse(
+                            {
+                                "type": "tool",
+                                "server": info.get("server"),
+                                "name": info.get("name"),
+                                "status": "done",
+                            }
+                        )
+                elif etype == "response.output_item.done":
+                    item = evt.get("item") or {}
+                    if item.get("type") == "mcp_call":
+                        iid = item.get("id")
+                        if iid not in mcp_done:
+                            mcp_done.add(iid)
+                            info = mcp_calls.get(iid, {})
+                            yield _sse(
+                                {
+                                    "type": "tool",
+                                    "server": item.get("server_label")
+                                    or info.get("server"),
+                                    "name": item.get("name") or info.get("name"),
+                                    "status": "done",
+                                }
+                            )
                 elif etype == "response.error" or etype == "error":
                     err = evt.get("error") or evt.get("message") or "stream error"
                     if isinstance(err, dict):
@@ -239,12 +342,16 @@ INDEX_HTML = """<!doctype html>
   }
   header .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex: 0 0 auto; }
   header .title { font-weight: 600; font-size: 15px; }
-  header .tool {
-    margin-left: auto; font-size: 12px; color: var(--muted);
-    border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%;
+  header .tools-pills {
+    margin-left: auto; display: flex; gap: 6px; flex-wrap: nowrap;
+    overflow: hidden; max-width: 60%; justify-content: flex-end;
   }
-  header .tool code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  header .pill {
+    font-size: 12px; color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px;
+  }
   #scroll { flex: 1 1 auto; overflow-y: auto; }
   #log {
     max-width: 760px; margin: 0 auto; padding: 20px 18px;
@@ -292,12 +399,55 @@ INDEX_HTML = """<!doctype html>
     color: #fff; font-size: 14.5px; font-weight: 500; cursor: pointer; flex: 0 0 auto;
   }
   button:disabled { opacity: .5; cursor: default; }
+
+  /* assistant turn: tool chips stacked above the message bubble */
+  .turn { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 82%; }
+  .bot .msg { max-width: 100%; }
+  .tools { display: flex; flex-direction: column; gap: 4px; }
+  .tool-chip {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px 9px;
+    display: inline-flex; align-items: center; max-width: 100%;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tool-chip .tc-server { color: var(--text); }
+  .tool-chip .tc-name { color: var(--accent); }
+  .tool-chip.running .tc-status { color: var(--muted); }
+  .tool-chip.done { opacity: .85; }
+  .tool-chip.done .tc-status { color: #16a34a; }
+
+  /* rendered markdown inside bot bubbles */
+  .bot .msg.rendered { white-space: normal; }
+  .bot .msg.rendered > :first-child { margin-top: 0; }
+  .bot .msg.rendered > :last-child { margin-bottom: 0; }
+  .bot .msg p { margin: 0 0 8px; }
+  .bot .msg strong { font-weight: 600; }
+  .bot .msg em { font-style: italic; }
+  .bot .msg code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em;
+    background: #eef2f7; border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px;
+  }
+  .bot .msg pre { margin: 8px 0; }
+  .bot .msg pre code {
+    display: block; padding: 10px 12px; border-radius: 8px;
+    background: #f8fafc; border: 1px solid var(--border);
+    overflow-x: auto; white-space: pre; font-size: .9em;
+  }
+  .bot .msg h1, .bot .msg h2, .bot .msg h3 { margin: 10px 0 6px; line-height: 1.3; font-weight: 600; }
+  .bot .msg h1 { font-size: 1.25em; }
+  .bot .msg h2 { font-size: 1.15em; }
+  .bot .msg h3 { font-size: 1.05em; }
+  .bot .msg ul, .bot .msg ol { margin: 6px 0; padding-left: 22px; }
+  .bot .msg li { margin: 2px 0; }
+  .bot .msg a { color: var(--accent); text-decoration: underline; }
 </style></head>
 <body>
 <header>
   <span class="dot"></span>
   <span class="title">Foundry Agent + MCP</span>
-  <span class="tool">tool: <code>gitmcp.io/Azure/azure-rest-api-specs</code></span>
+  <span class="tools-pills" id="toolPills"></span>
 </header>
 <div id="scroll">
   <div id="log">
@@ -319,6 +469,47 @@ const log = document.getElementById('log');
 const form = document.getElementById('f');
 const input = document.getElementById('m');
 const btn = document.getElementById('b');
+
+function mdEscape(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function md(src){
+  const blocks=[];
+  src=src.replace(/```(\\w*)\\n?([\\s\\S]*?)```/g,(m,l,code)=>{blocks.push('<pre><code>'+mdEscape(code.replace(/\\n$/,''))+'</code></pre>');return 'ZZCBZZ'+(blocks.length-1)+'ZZ';});
+  src=mdEscape(src);
+  src=src.replace(/`([^`\\n]+)`/g,'<code>$1</code>');
+  src=src.replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>');
+  src=src.replace(/(^|[^*])\\*([^*\\n]+)\\*/g,'$1<em>$2</em>');
+  src=src.replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^)\\s]+)\\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const lines=src.split('\\n');const out=[];let list=null;
+  const closeList=()=>{if(list){out.push('</'+list+'>');list=null;}};
+  for(const line of lines){let m;
+    if(/^ZZCBZZ\\d+ZZ$/.test(line.trim())){closeList();out.push(line.trim());continue;}
+    if(m=line.match(/^(#{1,3})\\s+(.*)$/)){closeList();out.push('<h'+m[1].length+'>'+m[2]+'</h'+m[1].length+'>');continue;}
+    if(m=line.match(/^\\s*[-*]\\s+(.*)$/)){if(list!=='ul'){closeList();out.push('<ul>');list='ul';}out.push('<li>'+m[1]+'</li>');continue;}
+    if(m=line.match(/^\\s*\\d+\\.\\s+(.*)$/)){if(list!=='ol'){closeList();out.push('<ol>');list='ol';}out.push('<li>'+m[1]+'</li>');continue;}
+    closeList();if(line.trim()==='')continue;out.push('<p>'+line+'</p>');}
+  closeList();
+  let html=out.join('\\n');html=html.replace(/ZZCBZZ(\\d+)ZZ/g,(m,i)=>blocks[i]);
+  return html;
+}
+
+async function loadTools() {
+  const el = document.getElementById('toolPills');
+  try {
+    const r = await fetch('/tools');
+    if (!r.ok) return;
+    const data = await r.json();
+    const list = (data && Array.isArray(data.tools)) ? data.tools : [];
+    el.textContent = '';
+    for (const t of list) {
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.title = t.server_url || '';
+      pill.textContent = t.server_label || 'mcp';
+      el.appendChild(pill);
+    }
+  } catch (_) { /* leave header pills empty on failure */ }
+}
+loadTools();
 
 function atBottom() {
   return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
@@ -368,13 +559,71 @@ form.addEventListener('submit', async (e) => {
   autosize();
   setBusy(true);
 
-  const bot = addRow('bot');
+  // Assistant turn: a column holding tool-call chips above the message bubble.
+  const botRow = document.createElement('div');
+  botRow.className = 'row bot';
+  const turn = document.createElement('div');
+  turn.className = 'turn';
+  const tools = document.createElement('div');
+  tools.className = 'tools';
+  const bot = document.createElement('div');
+  bot.className = 'msg';
+  turn.appendChild(tools);
+  turn.appendChild(bot);
+  botRow.appendChild(turn);
+  log.appendChild(botRow);
+  scrollDown(true);
+
   bot.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
   let text = '';
   let started = false;
+  const pendingTools = [];
+
+  function toolLabel(chip, server, name, status) {
+    chip.textContent = '';
+    chip.appendChild(document.createTextNode('🔧 '));
+    const s = document.createElement('span');
+    s.className = 'tc-server';
+    s.textContent = server || 'mcp';
+    const sep = document.createElement('span');
+    sep.textContent = ' · ';
+    const n = document.createElement('span');
+    n.className = 'tc-name';
+    n.textContent = name || 'tool';
+    const st = document.createElement('span');
+    st.className = 'tc-status';
+    st.textContent = ' — ' + (status === 'done' ? 'done' : 'running…');
+    chip.append(s, sep, n, st);
+  }
+
+  function toolEvent(evt) {
+    if (evt.status === 'running') {
+      const chip = document.createElement('div');
+      chip.className = 'tool-chip running';
+      chip.dataset.key = (evt.server || '') + '|' + (evt.name || '');
+      toolLabel(chip, evt.server, evt.name, 'running');
+      tools.appendChild(chip);
+      pendingTools.push(chip);
+    } else if (evt.status === 'done') {
+      const key = (evt.server || '') + '|' + (evt.name || '');
+      let chip = null;
+      for (let i = 0; i < pendingTools.length; i++) {
+        if (pendingTools[i].dataset.key === key) { chip = pendingTools.splice(i, 1)[0]; break; }
+      }
+      if (!chip && pendingTools.length) chip = pendingTools.shift();
+      if (chip) {
+        chip.className = 'tool-chip done';
+        const server = evt.server || (chip.dataset.key.split('|')[0]);
+        const name = evt.name || (chip.dataset.key.split('|')[1]);
+        toolLabel(chip, server, name, 'done');
+      }
+    }
+    scrollDown(false);
+  }
 
   function render(streaming) {
-    bot.textContent = text;
+    bot.className = 'msg rendered';
+    bot.innerHTML = md(text);
     if (streaming) {
       const caret = document.createElement('span');
       caret.className = 'caret';
@@ -413,6 +662,8 @@ form.addEventListener('submit', async (e) => {
           if (!started) { started = true; bot.textContent = ''; }
           text += evt.text;
           render(true);
+        } else if (evt.type === 'tool') {
+          toolEvent(evt);
         } else if (evt.type === 'error') {
           errored = true;
           bot.className = 'msg error';
