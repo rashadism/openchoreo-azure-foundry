@@ -34,7 +34,8 @@ spec:
   endpoints:
     http:
       port: 8080
-      type: HTTP                            # user-visitable UI endpoint
+      type: HTTP
+      visibility: [external]                 # user-visitable UI — exposed via the gateway
   dependencies:
     resources:
       # Each dependency injects the resolved deployment name (and, for the first,

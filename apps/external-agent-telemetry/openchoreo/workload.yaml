@@ -52,5 +52,6 @@ spec:
     http:
       port: 8080
       type: HTTP
+      visibility: [external]                 # invoke endpoint — reachable via the gateway
   # NOTE: intentionally NO dependencies.resources[]. All Azure endpoints/tokens
   # arrive as secrets via SecretReference, per the design.

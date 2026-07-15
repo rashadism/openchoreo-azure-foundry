@@ -22,6 +22,7 @@ spec:
     http:
       port: 8080
       type: HTTP
+      visibility: [external]                 # user-visitable UI — exposed via the gateway
   dependencies:
     resources:
       # Optional: an agent Resource (ClusterResourceType azure-foundry-prompt-agent-xp)

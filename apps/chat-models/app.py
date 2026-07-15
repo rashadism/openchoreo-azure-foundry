@@ -11,6 +11,7 @@ azure-ai-projects SDK exchanges it for a token (scope https://ai.azure.com/.defa
 when it builds the OpenAI client.
 """
 import os
+import time
 from functools import lru_cache
 
 from fastapi import FastAPI, HTTPException
@@ -18,7 +19,24 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from azure.ai.projects import AIProjectClient
+from azure.core.credentials import AccessToken
 from azure.identity import DefaultAzureCredential
+
+
+class _StaticToken:
+    """Use a pre-issued bearer token when AZURE_AI_TOKEN is set (e.g. an `az` token).
+    Interim path for testing before a service principal is available."""
+
+    def __init__(self, token: str):
+        self._t = token
+
+    def get_token(self, *scopes, **kwargs):
+        return AccessToken(self._t, int(time.time()) + 3000)
+
+
+def _credential():
+    tok = os.environ.get("AZURE_AI_TOKEN")
+    return _StaticToken(tok) if tok else DefaultAzureCredential()
 
 # ---- Config from environment ------------------------------------------------
 PROJECT_ENDPOINT = os.environ.get("FOUNDRY_PROJECT_ENDPOINT", "")
@@ -45,7 +63,7 @@ def get_openai_client():
         raise RuntimeError("FOUNDRY_PROJECT_ENDPOINT is not set")
     project = AIProjectClient(
         endpoint=PROJECT_ENDPOINT,
-        credential=DefaultAzureCredential(),
+        credential=_credential(),
     )
     return project.get_openai_client()
 
