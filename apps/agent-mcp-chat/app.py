@@ -451,13 +451,13 @@ INDEX_HTML = """<!doctype html>
 </header>
 <div id="scroll">
   <div id="log">
-    <div class="meta">Ask about Azure REST API specs. The agent calls the MCP tool automatically.</div>
+    <div class="meta">Ask a question to get started.</div>
   </div>
 </div>
 <footer>
   <form id="f">
     <textarea id="m" rows="1" autocomplete="off"
-      placeholder="Ask about Azure REST API specs…  (Enter to send, Shift+Enter for newline)"></textarea>
+      placeholder="Message the agent…"></textarea>
     <button id="b" type="submit">Send</button>
   </form>
 </footer>

@@ -319,7 +319,7 @@ INDEX_HTML = """<!doctype html>
   <div id="log" role="log" aria-live="polite" aria-label="Conversation"></div>
   <form id="form">
     <label class="sr-only" for="input">Message</label>
-    <textarea id="input" rows="1" placeholder="Message… (Enter to send, Shift+Enter for newline)" autofocus></textarea>
+    <textarea id="input" rows="1" placeholder="Message…" autofocus></textarea>
     <button type="submit" id="send">Send</button>
   </form>
 <script>
