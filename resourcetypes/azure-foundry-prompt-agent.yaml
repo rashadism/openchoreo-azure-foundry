@@ -33,7 +33,7 @@ spec:
 
   resources:
     - id: agentJob
-      readyWhen: "${has(applied.agentJob.status.succeeded) && applied.agentJob.status.succeeded == 1}"
+      # Readiness comes from the default per-Kind Job heuristic (Job Complete = ready).
       template:
         apiVersion: batch/v1
         kind: Job
