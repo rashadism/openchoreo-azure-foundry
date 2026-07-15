@@ -218,21 +218,13 @@ INDEX_HTML = """<!doctype html>
 <title>Foundry Agent + MCP chat</title>
 <style>
   :root {
-    color-scheme: light dark;
-    --bg: #0f172a; --panel: #1e293b; --panel-2: #172033;
-    --border: #29374d; --text: #e2e8f0; --muted: #94a3b8;
-    --user: #2563eb; --bot: #263449; --accent: #3b82f6;
-    --danger-bg: #3f1d24; --danger-border: #7f1d1d; --danger-text: #fecaca;
+    color-scheme: light;
+    --bg: #f6f7f9; --panel: #ffffff; --panel-2: #ffffff;
+    --border: #e2e8f0; --text: #0f172a; --muted: #64748b;
+    --user: #2563eb; --bot: #f1f5f9; --accent: #2563eb;
+    --danger-bg: #fef2f2; --danger-border: #fecaca; --danger-text: #b91c1c;
   }
-  @media (prefers-color-scheme: light) {
-    :root {
-      --bg: #f6f7f9; --panel: #ffffff; --panel-2: #ffffff;
-      --border: #e2e8f0; --text: #0f172a; --muted: #64748b;
-      --user: #2563eb; --bot: #f1f5f9; --accent: #2563eb;
-      --danger-bg: #fef2f2; --danger-border: #fecaca; --danger-text: #b91c1c;
-    }
-    .bot { color: var(--text); }
-  }
+  .bot { color: var(--text); }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {

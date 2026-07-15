@@ -193,7 +193,7 @@ INDEX_HTML = """<!doctype html>
 <title>Chat with Models</title>
 <style>
   :root {
-    color-scheme: light dark;
+    color-scheme: light;
     --border: color-mix(in srgb, currentColor 14%, transparent);
     --muted: color-mix(in srgb, currentColor 55%, transparent);
     --bot-bg: color-mix(in srgb, currentColor 7%, transparent);
