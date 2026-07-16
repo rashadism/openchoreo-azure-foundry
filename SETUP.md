@@ -1,68 +1,69 @@
 # Rebuild the azure-poc demo
 
-Ordered steps to recreate the live demo on a fresh cluster. The specs themselves
-are regenerated with the openchoreo-developer / -platform-engineer skills — this is
-just the sequence and the values that aren't obvious.
+Grounded in what actually ran last time. Two things to know up front:
+
+- **Applied with `kubectl`, not MCP.** The `openchoreo-cp` MCP server was pointed at a
+  different cluster, so every object below was `kubectl apply`'d directly. If MCP now
+  targets this cluster you can use the developer-skill tools instead — same objects.
+- **No gateway patching.** Public reach is just `endpoints.<name>.visibility: [external]`
+  on the Workload — that's what puts it on the ingress gateway. Without it you'd be
+  port-forwarding. (Release/ProjectReleaseBinding names are auto-generated — don't hardcode.)
 
 ## Fixed values
 
-- Foundry project endpoint: `https://rashad-4421-resource.services.ai.azure.com/api/projects/rashad-4421`
-- Resource group (Owner): `rg-azure-foundry-openchoreo-rashad` · Subscription (Contributor): `corporate-rnd-001`
-- Model deployments (must exist in Foundry for the `-ref` workaround): `gpt-5-mini`, `gpt-5-nano`, `gpt-5.1`
+- Foundry project endpoint (`EP`): `https://rashad-4421-resource.services.ai.azure.com/api/projects/rashad-4421`
+- Model deployments (must already exist in Foundry — the `-ref` type references them): `gpt-5-mini`, `gpt-5-nano`, `gpt-5.1`
 - Images (ttl.sh, ~4h TTL — rebuild if expired): `ttl.sh/chat-models-rashad-md2:4h`, `ttl.sh/agent-mcp-chat-rashad-md3:4h`
 
-## Auth: pick one (decide at rebuild time)
+## Auth (decide at rebuild time)
 
-- **Interim** (what worked): bake an `az` token into each Workload as `AZURE_AI_TOKEN`
-  (scope `https://ai.azure.com`); run the Crossplane provider out-of-cluster with `az login`.
-  Token expires ~1h — reinject (step 8).
+- **Interim** (what worked): bake an `az` token (`az account get-access-token --resource
+  https://ai.azure.com`) into each Workload as `AZURE_AI_TOKEN`; run the Crossplane
+  provider out-of-cluster with `az login`. Token lasts ~1h — reinject on expiry.
 - **Ideal** (needs the SP): SecretReference with `AZURE_CLIENT_ID/TENANT/SECRET`; provider
-  in-cluster with workload identity; ASO for models instead of `-ref`.
+  in-cluster via workload identity; ASO for models instead of `-ref`.
 
 ## Steps
 
-1. **Cluster + OpenChoreo up.** Control plane + data plane installed; `list_namespaces` works.
-   Confirms base `default` ClusterProjectType, `default` DeploymentPipeline, and dev/staging/prod envs exist.
-2. **Install the ResourceTypes:** `kubectl apply -f resourcetypes/`.
-3. **Install the Crossplane provider** (for the agent): apply the CRD + RBAC, then run it.
-   - `kubectl apply -f crossplane/config/crd/ -f crossplane/config/agent-rbac.yaml`
-   - `az login`, then `cd crossplane && go run ./cmd/provider` (out-of-cluster, interim).
-   - The RBAC (`openchoreo-foundryagent-access`) lets the data-plane agent apply FoundryAgent CRs.
-4. **Create the project** `azure-poc` (type `default`, pipeline `default`), then its
-   **ProjectReleaseBinding** for `development` — this cuts the cell namespace.
-5. **Create the Resources** (all `owner.projectName: azure-poc`):
-   - `model-mini` → `azure-foundry-model-ref`, `modelName: gpt-5-mini`
-   - `model-nano` → `azure-foundry-model-ref`, `modelName: gpt-5-nano`
-   - `model-51`   → `azure-foundry-model-ref`, `modelName: gpt-5.1`
-   - `mcp-agent`  → `azure-foundry-prompt-agent-xp`, `modelDeploymentName: gpt-5.1`,
+1. **Base up:** cluster + OpenChoreo installed; `default` project type, `default` pipeline,
+   and dev/staging/prod environments exist.
+2. **ResourceTypes:** `kubectl apply -f resourcetypes/`.
+3. **Crossplane provider** (agent lifecycle):
+   `kubectl apply -f crossplane/config/crd/ -f crossplane/config/agent-rbac.yaml`,
+   then `az login` and `cd crossplane && go run ./cmd/provider` (out-of-cluster, interim).
+   `agent-rbac.yaml` lets the data-plane agent apply the FoundryAgent CRs.
+4. **Project** `azure-poc` (type `default`, pipeline `default`) + its dev ProjectReleaseBinding
+   (this cuts the cell namespace).
+5. **Resources** (`owner.projectName: azure-poc`):
+   - `model-mini` / `model-nano` / `model-51` → `azure-foundry-model-ref`, `modelName:` `gpt-5-mini` / `gpt-5-nano` / `gpt-5.1`
+   - `mcp-agent` → `azure-foundry-prompt-agent-xp`, `modelDeploymentName: gpt-5.1`,
      `mcpServers: [{serverLabel: api-specs, serverUrl: https://gitmcp.io/Azure/azure-rest-api-specs}]`,
-     instructions = "use the api-specs MCP tools … cite the file/path".
-6. **Bind each Resource** in `development` (ResourceReleaseBinding), setting
-   `resourceTypeEnvironmentConfigs`:
-   - models (`-ref`): `endpoint: <Foundry project endpoint>`
-   - agent (`-xp`): `projectEndpoint: <Foundry project endpoint>`
-   Wait for all four `READY=True` (the agent's FoundryAgent CR shows `SYNCED/READY=True`).
-7. **Deploy the two apps** (Component `web-application`, autoDeploy on):
-   - `chat-models`: image `chat-models-rashad-md2`; deps `model-mini→{deploymentName:MODEL_1,
-     endpoint:FOUNDRY_PROJECT_ENDPOINT}`, `model-nano→{deploymentName:MODEL_2}`,
-     `model-51→{deploymentName:MODEL_3}`; endpoint http/8080 `visibility:[external]`.
-   - `agent-mcp-chat`: image `agent-mcp-chat-rashad-md3`; env `FOUNDRY_PROJECT_ENDPOINT=<endpoint>`;
-     dep `mcp-agent→{agentName:AGENT_NAME}`; endpoint http/8080 `visibility:[external]`.
-   Both Workloads also carry `AZURE_AI_TOKEN` (interim). Cutting the Workload auto-binds a
-   ComponentRelease in development.
-8. **(Interim) Inject a fresh token** into both Workloads whenever it expires:
-   `TOKEN=$(az account get-access-token --resource https://ai.azure.com --query accessToken -o tsv)`
-   then patch the `AZURE_AI_TOKEN` env on each Workload and re-apply (auto-deploy rolls the pods).
-9. **Verify** through the gateway (host from `ReleaseBinding.status.endpoints[].externalURLs`,
+     instructions "use the api-specs MCP tools … cite the file/path".
+6. **ResourceReleaseBinding per resource, env `development`**, with `resourceTypeEnvironmentConfigs`:
+   - model-ref bindings: `endpoint: <EP>`
+   - agent (`-xp`) binding: `projectEndpoint: <EP>`
+   Wait for all four `Ready=True`; the agent's FoundryAgent CR should show `SYNCED/READY=True`.
+7. **Two apps** — Component (`deployment/web-application`, `autoDeploy: true`) + Workload:
+   - **chat-models** — image `chat-models-rashad-md2`; deps
+     `model-mini → {deploymentName: MODEL_1, endpoint: FOUNDRY_PROJECT_ENDPOINT}`,
+     `model-nano → {deploymentName: MODEL_2}`, `model-51 → {deploymentName: MODEL_3}`;
+     endpoint `http` port 8080 `visibility: [external]`; env `AZURE_AI_TOKEN`.
+   - **agent-mcp-chat** — image `agent-mcp-chat-rashad-md3`; dep
+     `mcp-agent → {agentName: AGENT_NAME}`; env `FOUNDRY_PROJECT_ENDPOINT: <EP>`, `AZURE_AI_TOKEN`;
+     endpoint `http` port 8080 `visibility: [external]`.
+   `autoDeploy` cuts + binds a ComponentRelease in development on each Workload apply.
+8. **Reinject token** (interim) whenever it expires: fetch a fresh `az` token, patch the
+   `AZURE_AI_TOKEN` env on both Workloads, re-apply (auto-deploy rolls the pods).
+9. **Verify** at the gateway (host from `ReleaseBinding.status.endpoints[].externalURLs`,
    port 19080): `chat-models` `/chat/stream` returns a model reply; `agent-mcp-chat` `/tools`
    lists the `api-specs` server and a tool-using turn streams `tools_listed` + `tool` frames.
 
 ## Gotchas
 
-- **Web endpoints need `visibility:[external]`** or the gateway URL 404s.
-- **Cluster DNS uses UDP.** If external resolution fails (`NameResolutionError`), it's node
-  egress (VPN/MTU), not the token — CoreDNS `force_tcp` or fixing node DNS resolves it.
-- **Provider run-mode.** Out-of-cluster needs a live `az login` on the host; in-cluster needs
-  workload identity. If FoundryAgent CRs sit un-SYNCED, the provider isn't running.
+- **Web apps need `visibility: [external]`** or the gateway URL 404s. This is the only "gateway" step.
+- **Cluster DNS uses UDP.** If pods can't resolve Foundry (`NameResolutionError`) it's node
+  egress (VPN/MTU), not the token — fix node DNS or force CoreDNS to TCP.
+- **Provider run-mode:** out-of-cluster needs a live `az login`; if FoundryAgent CRs sit
+  un-SYNCED, the provider isn't running.
 - **external-agent-telemetry stays parked** until the admin registers
-  `Microsoft.OperationalInsights` + `Microsoft.Insights` on the subscription (App Insights).
+  `Microsoft.OperationalInsights` + `Microsoft.Insights` on the subscription.
