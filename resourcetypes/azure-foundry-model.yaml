@@ -82,7 +82,10 @@ spec:
             model:
               format:  ${parameters.modelFormat}
               name:    ${parameters.modelName}
-              version: ${parameters.modelVersion}
+              # Optional: omit → the version key is dropped and Azure uses the model's default.
+              # Block scalar so the ternary's ':' doesn't confuse the YAML parser.
+              version: |
+                ${has(parameters.modelVersion) ? parameters.modelVersion : oc_omit()}
           sku:
             name:     ${parameters.skuName}
             capacity: ${parameters.capacity}
