@@ -11,7 +11,7 @@ Grounded in what actually ran last time. Two things to know up front:
 
 ## Fixed values
 
-- Foundry project endpoint (`EP`): `https://rashad-4421-resource.services.ai.azure.com/api/projects/rashad-4421`
+- Foundry project endpoint (`EP`): `https://<your-account>.services.ai.azure.com/api/projects/<your-project>`
 - Model deployments (must already exist in Foundry — the `-ref` type references them): `gpt-5-mini`, `gpt-5-nano`, `gpt-5.1`
 - Images (ttl.sh, ~4h TTL — rebuild if expired): `ttl.sh/chat-models-rashad-md2:4h`, `ttl.sh/agent-mcp-chat-rashad-md3:4h`
 

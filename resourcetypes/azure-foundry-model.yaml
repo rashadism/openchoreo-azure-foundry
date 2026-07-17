@@ -51,14 +51,10 @@ spec:
           enum: [GlobalStandard, Standard, DataZoneStandard, ProvisionedManaged]
         capacity:     { type: integer, default: 10, description: Rate limit in thousands of tokens/min (1 = 1k TPM); bounded by quota. }
 
-  # Per-environment: account differs between dev and prod.
-  environmentConfigs:
-    openAPIV3Schema:
-      type: object
-      required: [accountArmId]
-      properties:
-        accountArmId:    { type: string, description: ARM resource ID of the Foundry account. }
-
+  # No environmentConfigs: the developer picks only the model. The Foundry account
+  # is referenced by name via a PE-provisioned ASO Account CR (foundry-account) that
+  # adopts the real account; the project endpoint comes from the foundry-account
+  # ConfigMap. No Azure IDs live in this type.
   retainPolicy: Delete
 
   outputs:
@@ -71,7 +67,7 @@ spec:
 
   resources:
     - id: modelDeployment
-      readyWhen: "${applied.modelDeployment.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')}"
+      readyWhen: "${has(applied.modelDeployment.status.conditions) && applied.modelDeployment.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')}"
       template:
         apiVersion: cognitiveservices.azure.com/v1api20250601
         kind: Deployment
@@ -80,7 +76,7 @@ spec:
           namespace: ${metadata.namespace}
         spec:
           owner:
-            armId: ${environmentConfigs.accountArmId}
+            name: foundry-account          # PE-provisioned ASO Account CR that adopts the real account
           azureName: ${parameters.modelName}
           properties:
             model:

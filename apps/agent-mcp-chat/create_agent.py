@@ -32,7 +32,7 @@ Idempotent: a 409 (agent already exists) is treated as success. Creating the
 agent again with the same name mints a new *version*; re-running is safe.
 
 Env:
-    FOUNDRY_PROJECT_ENDPOINT  e.g. https://rashad-4421-resource.services.ai.azure.com/api/projects/rashad-4421
+    FOUNDRY_PROJECT_ENDPOINT  e.g. https://<your-account>.services.ai.azure.com/api/projects/<your-project>
     AGENT_NAME                default "mcp-agent"
     FOUNDRY_MODEL_DEPLOYMENT  default "gpt-5-mini"
     MCP_SERVER_LABEL          default "api-specs"

@@ -4,7 +4,7 @@ A demo web component: a small chat UI that talks to an **Azure AI Foundry _agent
 which has a **public, tokenless MCP tool** attached. The agent uses the MCP tool to
 answer questions about the Azure REST API specifications.
 
-- **Foundry project endpoint:** `https://rashad-4421-resource.services.ai.azure.com/api/projects/rashad-4421`
+- **Foundry project endpoint:** `https://<your-account>.services.ai.azure.com/api/projects/<your-project>`
 - **Model deployment:** `gpt-5-mini`
 - **MCP tool:** `https://gitmcp.io/Azure/azure-rest-api-specs` (label `api-specs`, `require_approval: never`)
 
@@ -117,7 +117,7 @@ it maps cleanly to a chat session.)
 ### 1. Create the agent (once)
 
 ```bash
-export FOUNDRY_PROJECT_ENDPOINT="https://rashad-4421-resource.services.ai.azure.com/api/projects/rashad-4421"
+export FOUNDRY_PROJECT_ENDPOINT="https://<your-account>.services.ai.azure.com/api/projects/<your-project>"
 export AGENT_NAME="mcp-agent"
 export FOUNDRY_MODEL_DEPLOYMENT="gpt-5-mini"
 
