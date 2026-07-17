@@ -61,7 +61,7 @@ spec:
       serviceAccountName: provider-foundry
       containers:
         - name: provider
-          image: ttl.sh/provider-foundry-rashad:v2-8h
+          image: ttl.sh/provider-foundry-rashad:v4-8h
           envFrom:
             - secretRef:
                 name: azure-foundry-sp   # AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_CLIENT_SECRET

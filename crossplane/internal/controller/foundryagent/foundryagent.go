@@ -96,6 +96,19 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	if !exists {
 		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
+	// The agent name is already taken but this CR never created it (crossplane sets
+	// external-create-succeeded only after our own Create). Don't adopt someone
+	// else's agent — and never delete it either.
+	if cr.GetAnnotations()["crossplane.io/external-create-succeeded"] == "" {
+		if !cr.GetDeletionTimestamp().IsZero() {
+			// Being deleted: report as gone so the finalizer clears without issuing
+			// a DELETE against the agent the other Resource owns.
+			return managed.ExternalObservation{ResourceExists: false}, nil
+		}
+		// Otherwise surface a clear conflict instead of silently thrashing it.
+		return managed.ExternalObservation{}, fmt.Errorf(
+			"agent %q already exists and is not managed by this resource", cr.Spec.ForProvider.AgentName)
+	}
 	cr.Status.AtProvider.Exists = true
 	cr.SetConditions(xpv1.Available())
 	upToDate := def.Model == cr.Spec.ForProvider.Model &&
