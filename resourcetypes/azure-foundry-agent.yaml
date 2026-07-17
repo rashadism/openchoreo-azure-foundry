@@ -1,6 +1,8 @@
-# Creates a hosted agent in an existing Azure AI Foundry project.
-# An agent has no Azure resource type, so a one-shot Job calls the project's REST API.
-# The Job creates the agent; it does not keep watching it (see README).
+# The Azure AI Foundry agent. OpenChoreo renders a FoundryAgent CR; the Crossplane
+# provider (crossplane/) creates / heals / deletes the agent — full lifecycle, no Job,
+# no token secret (the provider authenticates with its own identity). The project
+# endpoint comes from the PE-provisioned `foundry-account` ConfigMap, so the developer
+# supplies only the agent's shape.
 apiVersion: openchoreo.dev/v1alpha1
 kind: ClusterResourceType
 metadata:
@@ -9,73 +11,71 @@ spec:
   parameters:
     openAPIV3Schema:
       type: object
-      required: [agentName, image]
+      required: [agentName, modelDeploymentName]
       properties:
-        agentName:           { type: string }
-        image:               { type: string }
-        modelDeploymentName: { type: string }
-        cpu:                 { type: string, default: "1" }
-        memory:              { type: string, default: "2Gi" }
-        protocol:
+        agentName: { type: string, description: Name for the agent in Foundry. }
+        modelDeploymentName:
           type: string
-          default: responses
-          enum: [responses, invocations, invocations_ws]
-
-  environmentConfigs:
-    openAPIV3Schema:
-      type: object
-      required: [projectEndpoint]
-      properties:
-        projectEndpoint: { type: string }
-        # SA linked to an Azure identity with the "Foundry Project Manager" role.
-        # Keeps creds per-environment without a secret in this file.
-        credentialServiceAccount: { type: string, default: azure-foundry-deployer }
-
+          description: Model deployment the agent runs on (must be deployed in the account).
+          # Known Foundry chat models; keep in sync with azure-foundry-model.
+          enum:
+            - gpt-4o
+            - gpt-4o-mini
+            - gpt-4.1
+            - gpt-4.1-mini
+            - gpt-4.1-nano
+            - gpt-5
+            - gpt-5-chat
+            - gpt-5-mini
+            - gpt-5-nano
+            - gpt-5.1
+            - gpt-5.1-chat
+            - gpt-5.2
+            - gpt-5.2-chat
+            - gpt-5.3-chat
+            - gpt-5.4
+            - gpt-5.4-mini
+            - gpt-5.4-nano
+            - gpt-5.5
+            - gpt-5.6-luna
+            - gpt-5.6-sol
+            - gpt-5.6-terra
+            - gpt-chat-latest
+            - o1
+            - o3
+            - o3-mini
+            - o4-mini
+        instructions: { type: string, default: "You are a helpful assistant.", description: System prompt shaping the agent's behaviour. }
+        mcpServers:
+          type: array
+          default: []
+          description: MCP tool servers the agent may call (zero or more).
+          items:
+            type: object
+            required: [serverLabel, serverUrl]
+            properties:
+              serverLabel: { type: string, description: Short label identifying the MCP server. }
+              serverUrl:   { type: string, description: Base URL of the MCP server. }
   retainPolicy: Delete
-
   outputs:
     - name: agentName
       value: "${parameters.agentName}"
     - name: endpoint
-      value: "${environmentConfigs.projectEndpoint}/agents/${parameters.agentName}"
-
+      configMapKeyRef:
+        name: foundry-account
+        key: projectEndpoint
   resources:
-    - id: agentJob
-      # Readiness comes from the default per-Kind Job heuristic (Job Complete = ready).
+    - id: agent
+      readyWhen: "${applied.agent.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')}"
       template:
-        apiVersion: batch/v1
-        kind: Job
+        apiVersion: foundry.openchoreo.dev/v1alpha1
+        kind: FoundryAgent
         metadata:
-          name: ${metadata.name}-create-agent
-          namespace: ${metadata.namespace}
+          name: ${metadata.name}          # FoundryAgent is cluster-scoped — no namespace
         spec:
-          backoffLimit: 4
-          template:
-            metadata:
-              labels:
-                azure.workload.identity/use: "true"
-            spec:
-              serviceAccountName: ${environmentConfigs.credentialServiceAccount}
-              restartPolicy: Never
-              containers:
-                - name: create-agent
-                  image: mcr.microsoft.com/azure-cli:2.80.0
-                  command: ["/bin/sh", "-c"]
-                  args:
-                    - |
-                      set -e
-                      TOKEN=$(az account get-access-token --resource https://ai.azure.com --query accessToken -o tsv)
-                      curl -sf -X POST "${environmentConfigs.projectEndpoint}/agents?api-version=v1" \
-                        -H "Authorization: Bearer $TOKEN" \
-                        -H "Content-Type: application/json" \
-                        -d '{
-                          "name": "${parameters.agentName}",
-                          "definition": {
-                            "kind": "hosted",
-                            "container_configuration": { "image": "${parameters.image}" },
-                            "cpu": "${parameters.cpu}",
-                            "memory": "${parameters.memory}",
-                            "protocol_versions": [ { "protocol": "${parameters.protocol}", "version": "1.0.0" } ],
-                            "environment_variables": { "MODEL_DEPLOYMENT_NAME": "${parameters.modelDeploymentName}" }
-                          }
-                        }'
+          forProvider:
+            agentName:    ${parameters.agentName}
+            model:        ${parameters.modelDeploymentName}
+            instructions: ${parameters.instructions}
+            # Map each mcpServers[] entry into a FoundryAgent MCP tool (auto-approved).
+            mcpTools: '${parameters.mcpServers.map(s, {"serverLabel": s.serverLabel, "serverURL": s.serverUrl, "requireApproval": "never"})}'

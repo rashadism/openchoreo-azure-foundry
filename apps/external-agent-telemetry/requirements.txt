@@ -4,6 +4,10 @@ opentelemetry-sdk==1.29.0
 # Foundry project client + Responses API (OpenAI-compatible) over Entra auth
 azure-ai-projects==1.0.0
 azure-identity==1.19.0
+# get_openai_client() needs the OpenAI SDK at runtime; Responses API needs >=1.68
+openai>=1.68,<2
 # HTTP service
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+# Web search tool (no API key). Maintained DuckDuckGo package; import name `ddgs`.
+ddgs>=6.0

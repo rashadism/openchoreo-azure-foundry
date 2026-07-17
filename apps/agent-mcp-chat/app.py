@@ -545,7 +545,7 @@ INDEX_HTML = """<!doctype html>
   <span class="dot"></span>
   <span class="titlewrap">
     <span class="title">Agentic Chatbot</span>
-    <span class="subtitle">Powered by Azure AI Foundry</span>
+    <span class="subtitle">Prompt agent deployed in Azure AI Foundry</span>
   </span>
   <button class="tools-btn" id="toolsBtn" type="button" aria-label="Show tools and MCP servers" aria-expanded="false">
     <span aria-hidden="true">🧰</span> Tools

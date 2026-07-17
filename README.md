@@ -4,68 +4,66 @@ Two building blocks that let a developer ask for an Azure AI Foundry **model** a
 **agent** the same way they'd ask for a database — without touching Azure themselves.
 
 The platform team installs these once. Developers then just say "give me a model"
-and "give me an agent," and the platform provisions them in Azure and wires the
+and "describe an agent," and the platform provisions them in Azure and wires the
 connection details into the app.
 
 ## Recommended setup
 
-Two operators, split by which plane the resource lives on:
+Two types, each fully managed by its own operator:
 
 - **Models → Azure Service Operator (ASO).** A model deployment is a control-plane
-  (ARM) resource, so ASO reconciles it declaratively. Use `azure-foundry-model.yaml`.
+  (ARM) resource, so ASO reconciles it declaratively — create, self-heal, and
+  delete-on-teardown all propagate to Azure. Use `azure-foundry-model.yaml`.
 - **Agents → the Crossplane provider** (`crossplane/`). An agent is data-plane only
   (no ARM type), so ASO can't touch it; the provider manages it as a `FoundryAgent`
-  CR. Use `azure-foundry-prompt-agent-xp.yaml`.
+  CR with the same full lifecycle (create, heal on drift, delete via finalizer).
+  Use `azure-foundry-agent.yaml`.
 
-The Job-based agent types (`azure-foundry-prompt-agent.yaml`, `azure-foundry-agent.yaml`)
-are the no-operator fallback — simplest to run, but create-once (no self-heal or
-delete-on-teardown).
+Developers pick only a model or describe an agent. All Azure account details — the
+project endpoint and account ARM ID — come from a `foundry-account` ConfigMap the
+platform team provisions **once per environment** (see below). No account details
+are ever prompted to developers.
 
 ## What's here
 
 | File | What it gives a developer |
 |------|---------------------------|
-| `resourcetypes/azure-foundry-model.yaml` | A model deployment (e.g. `gpt-5-mini`) inside an existing Foundry account |
-| `resourcetypes/azure-foundry-prompt-agent.yaml` | A prompt agent (model + instructions, no code) in an existing project |
-| `resourcetypes/azure-foundry-prompt-agent-xp.yaml` | Same prompt agent, but emits a `FoundryAgent` CR handled by the Crossplane provider (no Job) |
-| `resourcetypes/azure-foundry-agent.yaml` | A hosted agent (your own container) in an existing project |
+| `resourcetypes/azure-foundry-model.yaml` | A real Foundry model deployment (e.g. `gpt-5-mini`), provisioned via ASO with full lifecycle |
+| `resourcetypes/azure-foundry-agent.yaml` | A Foundry agent (model + instructions + MCP tools) as a `FoundryAgent` CR, managed by the Crossplane provider |
 | `examples/chatbot.yaml` | A developer asking for a model + agent, then an app using them |
 
 ## How it works
 
 ```
-Developer asks for a model/agent
+Developer picks a model / describes an agent
         │
         ▼
 OpenChoreo renders these templates into the cluster
         │
-        ├─ model → Azure Service Operator creates it in Azure
-        └─ agent → a short Job calls Foundry's API to create it
+        ├─ model → Azure Service Operator creates/heals/deletes it in Azure
+        └─ agent → the Crossplane provider reconciles a FoundryAgent CR
         │
         ▼
-Connection details come back as outputs
+Both read the project endpoint from the foundry-account ConfigMap
         │
         ▼
-The app's dependencies pick them up as environment variables
+Connection details come back as outputs; the app's dependencies pick them up as env vars
 ```
 
 Credentials never sit in these files. Each environment points at its own Azure
 account and its own identity, so dev and prod stay separate automatically.
 
-## Two kinds of agent
+## What the developer supplies
 
-Pick based on whether the developer ships their own code.
-
-| | Prompt agent | Hosted agent |
+| | Model (`azure-foundry-model`) | Agent (`azure-foundry-agent`) |
 |---|---|---|
-| What it is | Model + instructions + tools | Your own container image |
-| Needs code/image | No | Yes |
-| Extra Azure setup | None | A container registry (ACR) the project can pull from |
-| Use when | Most cases — a configured assistant | You need custom runtime logic |
+| Managed by | Azure Service Operator (ASO) | Crossplane provider |
+| Developer params | `modelName` (enum), `modelVersion`, `capacity`, `skuName`, `modelFormat` | `agentName`, `modelDeploymentName` (enum), `instructions`, `mcpServers[]` |
+| Per-environment binding | `accountArmId` (owner for the ASO CR) | none |
+| Account endpoint | read from `foundry-account` ConfigMap | read from `foundry-account` ConfigMap |
 
-**Start with the prompt agent.** It's just a model and instructions, so it needs no
-registry and works with basic project access. Reach for the hosted agent only when
-you have your own container to run.
+Neither type prompts the developer for the project endpoint or account ARM ID —
+those come from the environment's `foundry-account` ConfigMap.
 
 ## Where's the API key?
 
@@ -83,15 +81,30 @@ If you specifically need a key for the model, this repo would also have to manag
 the Foundry account (not just the deployment) and export its key into a secret.
 That's an opt-in, not the default — open an issue if you want it.
 
+## One-time PE setup: the `foundry-account` ConfigMap
+
+The platform team wires each environment to its Azure Foundry account **once**, via
+a `foundry-account` ConfigMap that carries the project endpoint and account ARM ID:
+
+- Created in the **cell namespace** so the ResourceType templates can read it for
+  outputs and render the ASO CR's owner (`accountArmId`).
+- Created in the **provider's namespace** so the Crossplane provider can read the
+  project endpoint when reconciling agents.
+
+Because the account details live in this ConfigMap, developers never supply them —
+they only pick a model or describe an agent.
+
 ## Before you use it
 
 The platform team needs, per environment:
 
 - An Azure AI Foundry **account and project already created** (these types add
   things *inside* them, they don't create the account).
+- The **`foundry-account` ConfigMap** provisioned in the cell namespace and the
+  provider's namespace (endpoint + account ARM ID).
 - **Azure Service Operator v2.15.0+** installed on the cluster (for the model).
-- A **ServiceAccount linked to an Azure identity** with the *Foundry Project
-  Manager* role (for the agent's create call).
+- The **Crossplane Foundry provider** running (see [`crossplane/`](./crossplane)),
+  linked to an Azure identity with the *Foundry Project Manager* role (for agents).
 
 ## Quick start
 
@@ -103,35 +116,18 @@ kubectl apply -f resourcetypes/
 
 Then a developer can use them — see `examples/chatbot.yaml`.
 
-## Good to know about the agent
+## Lifecycle
 
-Azure has no "agent" resource you can declare — the only way to make one is to call
-the project's API. So the agent type runs a Job that does exactly that, once.
+Both types are fully managed — created, kept in sync on drift, and removed on
+teardown:
 
-That means:
+- **Models** are real Azure ARM resources reconciled by ASO.
+- **Agents** are `FoundryAgent` objects reconciled by the Crossplane provider in
+  [`crossplane/`](./crossplane). It's implemented and verified end-to-end against a
+  live Foundry project: applying a `FoundryAgent` creates the agent, deleting it in
+  Azure makes the controller recreate it, and deleting the object removes the agent
+  via a finalizer. See [`crossplane/DESIGN.md`](./crossplane/DESIGN.md) to run it.
 
-- The agent is **created**, but not watched. Deleting it in Azure won't trigger a
-  rebuild, and tearing down the resource won't delete the agent.
-- In practice this is low-risk: Azure spins an idle agent's compute down after
-  ~15 minutes, so a leftover agent costs almost nothing.
-
-The model doesn't have this caveat — it's a real Azure resource, so it's fully
-managed: created, kept in sync, and removed on teardown.
-
-## The agent as a first-class resource (built)
-
-The Job creates an agent but doesn't watch it. For full lifecycle — create,
-self-heal on drift, and delete on teardown — there's a real Crossplane provider in
-[`crossplane/`](./crossplane) that manages an agent as a `FoundryAgent` object.
-
-It's implemented and verified end-to-end against a live Foundry project: applying a
-`FoundryAgent` creates the agent, deleting it in Azure makes the controller recreate
-it, and deleting the object removes the agent via a finalizer. See
-[`crossplane/DESIGN.md`](./crossplane/DESIGN.md) to run it.
-
-The two halves wire together via
-[`resourcetypes/azure-foundry-prompt-agent-xp.yaml`](./resourcetypes/azure-foundry-prompt-agent-xp.yaml):
-a developer's `Resource` renders a `FoundryAgent` CR, which the provider reconciles —
-so you get the dev-facing Resource abstraction *and* full lifecycle, with no Job or token.
-
-The Job remains the simplest choice when you don't want to run a controller.
+A developer's `Resource` from `azure-foundry-agent.yaml` renders a `FoundryAgent`
+CR, which the provider reconciles — so you get the dev-facing Resource abstraction
+*and* full lifecycle, with no Job or token.

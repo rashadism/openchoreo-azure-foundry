@@ -5,6 +5,8 @@ package foundryagent
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
@@ -12,6 +14,7 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -47,7 +50,39 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	if err != nil {
 		return nil, err
 	}
-	return &external{foundry: clients.New(cred, cr.Spec.ForProvider.ProjectEndpoint)}, nil
+	// The endpoint is a per-environment infra constant, not a developer input.
+	// Prefer it from the CR (back-compat); otherwise read the PE-provisioned
+	// `foundry-account` ConfigMap so the ResourceType needn't prompt for it.
+	endpoint := cr.Spec.ForProvider.ProjectEndpoint
+	if endpoint == "" {
+		if endpoint, err = c.endpointFromConfig(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return &external{foundry: clients.New(cred, endpoint)}, nil
+}
+
+// endpointFromConfig reads the Foundry project endpoint from a PE-provisioned
+// ConfigMap. Name/namespace default to `foundry-account` / the provider's own
+// namespace and are overridable via FOUNDRY_CONFIG_NAME / FOUNDRY_CONFIG_NAMESPACE.
+func (c *connector) endpointFromConfig(ctx context.Context) (string, error) {
+	ns := os.Getenv("FOUNDRY_CONFIG_NAMESPACE")
+	if ns == "" {
+		ns = "provider-foundry"
+	}
+	name := os.Getenv("FOUNDRY_CONFIG_NAME")
+	if name == "" {
+		name = "foundry-account"
+	}
+	var cm corev1.ConfigMap
+	if err := c.kube.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &cm); err != nil {
+		return "", fmt.Errorf("resolve project endpoint from configmap %s/%s: %w", ns, name, err)
+	}
+	ep := cm.Data["projectEndpoint"]
+	if ep == "" {
+		return "", fmt.Errorf("configmap %s/%s has no non-empty projectEndpoint key", ns, name)
+	}
+	return ep, nil
 }
 
 type external struct{ foundry *clients.Client }

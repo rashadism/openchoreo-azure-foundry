@@ -13,6 +13,7 @@ spec:
       properties:
         modelName:
           type: string
+          description: Foundry model to deploy.
           # Known Foundry chat models; regenerate from `az cognitiveservices model list -l <region>`.
           enum:
             - gpt-4o
@@ -41,26 +42,22 @@ spec:
             - o3
             - o3-mini
             - o4-mini
-        # Optional: omit to use the model's current default version.
-        modelVersion: { type: string }
-        modelFormat:  { type: string, default: OpenAI }
-        # Deployment tier (per-token vs zone-scoped vs reserved capacity).
+        modelVersion: { type: string, description: Model version; omit to use the model's default. }
+        modelFormat:  { type: string, default: OpenAI, description: Model publisher/format. }
         skuName:
           type: string
           default: GlobalStandard
+          description: Deployment tier (per-token, zone-scoped, or reserved capacity).
           enum: [GlobalStandard, Standard, DataZoneStandard, ProvisionedManaged]
-        # Rate limit in thousands of tokens/min (1 = 1k TPM). Bounded by your model quota.
-        capacity:     { type: integer, default: 10 }
+        capacity:     { type: integer, default: 10, description: Rate limit in thousands of tokens/min (1 = 1k TPM); bounded by quota. }
 
   # Per-environment: account differs between dev and prod.
   environmentConfigs:
     openAPIV3Schema:
       type: object
-      required: [accountArmId, accountEndpoint]
+      required: [accountArmId]
       properties:
-        accountArmId:    { type: string }
-        accountEndpoint: { type: string }
-        capacity:        { type: integer }
+        accountArmId:    { type: string, description: ARM resource ID of the Foundry account. }
 
   retainPolicy: Delete
 
@@ -68,7 +65,9 @@ spec:
     - name: deploymentName
       value: "${parameters.modelName}"
     - name: endpoint
-      value: "${environmentConfigs.accountEndpoint}"
+      configMapKeyRef:
+        name: foundry-account
+        key: projectEndpoint
 
   resources:
     - id: modelDeployment
@@ -90,4 +89,4 @@ spec:
               version: ${parameters.modelVersion}
           sku:
             name:     ${parameters.skuName}
-            capacity: ${environmentConfigs.capacity}
+            capacity: ${parameters.capacity}

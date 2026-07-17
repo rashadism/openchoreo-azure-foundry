@@ -1,14 +1,18 @@
-# OPTIONAL: an agent Resource that provisions the Foundry prompt agent through
-# the platform (Crossplane FoundryAgent CR behind ClusterResourceType
-# azure-foundry-prompt-agent-xp).
+# OPTIONAL: an agent Resource that provisions the Foundry agent through the
+# platform (Crossplane FoundryAgent CR behind ClusterResourceType
+# azure-foundry-agent).
+#
+# No environmentConfigs / projectEndpoint are needed here: the Crossplane provider
+# reads the Foundry project endpoint from the per-environment `foundry-account`
+# ConfigMap the platform team provisions once. Developers only describe the agent.
 #
 # ---------------------------------------------------------------------------
-# KNOWN GAP: as of this writing the azure-foundry-prompt-agent-xp ResourceType
-# does NOT expose a `tools` / MCP array to the FoundryAgent CR. So a Resource
+# KNOWN GAP: as of this writing the azure-foundry-agent ResourceType does NOT
+# expose an `mcpServers` / MCP array to the FoundryAgent CR. So a Resource
 # created from it produces an agent WITHOUT the MCP tool. Until the passthrough
 # lands, create the agent (with the MCP tool) using ../create_agent.py, and keep
-# AGENT_NAME here in sync with the created agent. Adding a `tools` passthrough to
-# the ResourceType/Crossplane composition is the productized path (see README).
+# agentName here in sync with the created agent. Adding an `mcpServers` passthrough
+# to the ResourceType/Crossplane composition is the productized path (see README).
 # ---------------------------------------------------------------------------
 apiVersion: openchoreo.dev/v1alpha1
 kind: Resource
@@ -21,16 +25,17 @@ spec:
     componentName: agent-mcp-chat
   resourceType:
     kind: ClusterResourceType
-    name: azure-foundry-prompt-agent-xp
-  # Parameters accepted by the current ResourceType. `model` + `instructions`
-  # are supported; `tools`/MCP is NOT yet (see gap note above).
+    name: azure-foundry-agent
+  # Parameters accepted by the current ResourceType. `agentName` +
+  # `modelDeploymentName` + `instructions` are supported; `mcpServers`/MCP is NOT
+  # yet (see gap note above).
   parameters:
     agentName: mcp-agent
-    model: gpt-5-mini
+    modelDeploymentName: gpt-5-mini
     instructions: >-
       You are a helpful assistant that uses the api-specs MCP tools to answer
       questions about the Azure REST API specifications.
-    # tools:                       # <-- NOT honored by azure-foundry-prompt-agent-xp yet
+    # mcpServers:                  # <-- NOT honored by azure-foundry-agent yet
     #   - type: mcp
     #     server_label: api-specs
     #     server_url: https://gitmcp.io/Azure/azure-rest-api-specs

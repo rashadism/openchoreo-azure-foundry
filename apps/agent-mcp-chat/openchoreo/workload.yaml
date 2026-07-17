@@ -25,10 +25,10 @@ spec:
       visibility: [external]                 # user-visitable UI — exposed via the gateway
   dependencies:
     resources:
-      # Optional: an agent Resource (ClusterResourceType azure-foundry-prompt-agent-xp)
+      # Optional: an agent Resource (ClusterResourceType azure-foundry-agent)
       # that provisions the Foundry agent. NOTE: that ResourceType does not yet
-      # accept a tools/MCP array, so for now the agent is created WITH the MCP tool
-      # by create_agent.py. See agent-resource.yaml and the README "tools passthrough gap".
+      # accept an mcpServers/MCP array, so for now the agent is created WITH the MCP
+      # tool by create_agent.py. See agent-resource.yaml and the README "mcpServers passthrough gap".
       - ref: mcp-agent
         envBindings:
           endpoint: AGENT_ENDPOINT

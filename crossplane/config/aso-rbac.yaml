@@ -1,0 +1,24 @@
+# Lets OpenChoreo's data-plane agent apply the ASO CognitiveServices resources that
+# the azure-foundry-model ResourceType renders (Deployment / Account CRs). Needed
+# once, when a ResourceType emits a CRD the agent has no default permission for.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openchoreo-aso-cognitiveservices-access
+rules:
+  - apiGroups: ["cognitiveservices.azure.com"]
+    resources: ["deployments", "deployments/status", "accounts", "accounts/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openchoreo-aso-cognitiveservices-access
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openchoreo-aso-cognitiveservices-access
+subjects:
+  - kind: ServiceAccount
+    name: cluster-agent-dataplane
+    namespace: openchoreo-data-plane

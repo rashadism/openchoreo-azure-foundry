@@ -17,8 +17,11 @@ type MCPTool struct {
 // FoundryAgentParameters is the desired state of a prompt agent.
 type FoundryAgentParameters struct {
 	// ProjectEndpoint of an existing Foundry project, e.g.
-	// https://<account>.services.ai.azure.com/api/projects/<project>
-	ProjectEndpoint string `json:"projectEndpoint"`
+	// https://<account>.services.ai.azure.com/api/projects/<project>.
+	// Optional: when empty the provider reads it from the PE-provisioned
+	// `foundry-account` ConfigMap (see endpointFromConfig).
+	// +optional
+	ProjectEndpoint string `json:"projectEndpoint,omitempty"`
 	// AgentName is the agent's unique name within the project.
 	AgentName string `json:"agentName"`
 	// Model deployment name the agent uses.

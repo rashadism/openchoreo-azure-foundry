@@ -107,7 +107,6 @@ spec:
                 - agentName
                 - instructions
                 - model
-                - projectEndpoint
                 type: object
               managementPolicies:
                 default:

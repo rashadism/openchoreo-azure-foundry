@@ -8,7 +8,7 @@ live yet.
 | App | What it shows |
 |-----|---------------|
 | [`chat-models/`](./chat-models) | A chat UI with a **3-model picker**; depends on three `azure-foundry-model` Resources; conversation history via the Responses API. |
-| [`agent-mcp-chat/`](./agent-mcp-chat) | A chat UI over a **Foundry prompt agent wired to a public, tokenless MCP tool** (gitmcp.io). Includes an idempotent create-agent script. |
+| [`agent-mcp-chat/`](./agent-mcp-chat) | A chat UI over a **Foundry agent wired to a public, tokenless MCP tool** (gitmcp.io). Includes an idempotent create-agent script. |
 | [`external-agent-telemetry/`](./external-agent-telemetry) | An **agent hosted on OpenChoreo that publishes OpenTelemetry to Foundry** (App Insights → Observability). Secrets only, no resource dependency. |
 
 ## Shared conventions
@@ -27,5 +27,5 @@ live yet.
 ## Known gap
 
 `agent-mcp-chat` creates its agent (with the MCP tool) via a script, because the
-`azure-foundry-prompt-agent-xp` ResourceType doesn't yet pass a `tools` array through to
+`azure-foundry-agent` ResourceType doesn't yet pass an `mcpServers` array through to
 the `FoundryAgent` CR. Adding that passthrough is the productized path.

@@ -34,15 +34,20 @@ Grounded in what actually ran last time. Two things to know up front:
    `agent-rbac.yaml` lets the data-plane agent apply the FoundryAgent CRs.
 4. **Project** `azure-poc` (type `default`, pipeline `default`) + its dev ProjectReleaseBinding
    (this cuts the cell namespace).
-5. **Resources** (`owner.projectName: azure-poc`):
+4a. **PE wires the Foundry account once per environment** — a `foundry-account` ConfigMap
+   (keys `projectEndpoint`, `accountEndpoint`, `accountArmId`) in **both** the cell namespace
+   (`dp-default-azure-poc-development-…`, for the model/agent `endpoint` outputs) **and** the
+   provider namespace (`provider-foundry`, so the Crossplane provider can read the endpoint).
+   The ResourceTypes reference it — so developers are prompted for *nothing* Azure.
+5. **Resources** (`owner.projectName: azure-poc`) — developer supplies only these:
    - `model-mini` / `model-nano` / `model-51` → `azure-foundry-model-ref`, `modelName:` `gpt-5-mini` / `gpt-5-nano` / `gpt-5.1`
    - `mcp-agent` → `azure-foundry-prompt-agent-xp`, `modelDeploymentName: gpt-5.1`,
      `mcpServers: [{serverLabel: api-specs, serverUrl: https://gitmcp.io/Azure/azure-rest-api-specs}]`,
      instructions "use the api-specs MCP tools … cite the file/path".
-6. **ResourceReleaseBinding per resource, env `development`**, with `resourceTypeEnvironmentConfigs`:
-   - model-ref bindings: `endpoint: <EP>`
-   - agent (`-xp`) binding: `projectEndpoint: <EP>`
-   Wait for all four `Ready=True`; the agent's FoundryAgent CR should show `SYNCED/READY=True`.
+6. **ResourceReleaseBinding per resource, env `development`** — **no `resourceTypeEnvironmentConfigs`**
+   (account details come from the `foundry-account` ConfigMap). Just pin the cut `resourceRelease`.
+   Wait for all four `Ready=True`; the agent's FoundryAgent CR shows `SYNCED/READY=True` (its
+   `projectEndpoint` is empty — the provider reads it from the ConfigMap).
 7. **Two apps** — Component (`deployment/web-application`, `autoDeploy: true`) + Workload:
    - **chat-models** — image `chat-models-rashad-md2`; deps
      `model-mini → {deploymentName: MODEL_1, endpoint: FOUNDRY_PROJECT_ENDPOINT}`,

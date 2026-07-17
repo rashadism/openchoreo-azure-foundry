@@ -1,8 +1,8 @@
 # agent-mcp-chat
 
-A demo web component: a small chat UI that talks to an **Azure AI Foundry _prompt
-agent_** which has a **public, tokenless MCP tool** attached. The agent uses the
-MCP tool to answer questions about the Azure REST API specifications.
+A demo web component: a small chat UI that talks to an **Azure AI Foundry _agent_**
+which has a **public, tokenless MCP tool** attached. The agent uses the MCP tool to
+answer questions about the Azure REST API specifications.
 
 - **Foundry project endpoint:** `https://rashad-4421-resource.services.ai.azure.com/api/projects/rashad-4421`
 - **Model deployment:** `gpt-5-mini`
@@ -10,7 +10,7 @@ MCP tool to answer questions about the Azure REST API specifications.
 
 ## What this demonstrates
 
-1. Creating a **prompt agent** (a declarative Foundry agent = model + instructions
+1. Creating a **Foundry agent** (a declarative agent = model + instructions
    + tools, run by Foundry) with an **MCP** tool in its `tools` array.
 2. A **FastAPI** web app that chats with that agent through the **Responses API**,
    using an `agent_reference` plus a **conversation** object for multi-turn history.
@@ -18,7 +18,7 @@ MCP tool to answer questions about the Azure REST API specifications.
 
 ## The agent + the MCP tool
 
-Foundry lets a prompt agent call **remote MCP servers** as tools. Each tool needs
+Foundry lets an agent call **remote MCP servers** as tools. Each tool needs
 a unique `server_label` and a `server_url`. The tool object (inside
 `definition.tools`):
 
@@ -171,18 +171,18 @@ the workload's env; the exact `SecretReference` schema depends on your platform
 install, so wire it to match your secret store rather than copying an invented
 shape here. `AGENT_NAME` and `PORT` are plain (non-secret) env and stay inline.
 
-### Known gap: `tools` / MCP passthrough in the ResourceType
+### Known gap: `mcpServers` / MCP passthrough in the ResourceType
 
 The optional agent `Resource` references `ClusterResourceType`
-**`azure-foundry-prompt-agent-xp`**. That ResourceType currently provisions a
-Foundry agent from `model` + `instructions` but **does not yet pass a `tools` /
-MCP array** down to the underlying Crossplane `FoundryAgent` CR. So a Resource
-created from it today yields an agent **without** the MCP tool.
+**`azure-foundry-agent`**. That ResourceType currently provisions a Foundry agent
+from `agentName` + `modelDeploymentName` + `instructions` but **does not yet pass an
+`mcpServers` / MCP array** down to the underlying Crossplane `FoundryAgent` CR. So a
+Resource created from it today yields an agent **without** the MCP tool.
 
 Because of that, this demo creates the agent **with** the MCP tool via
 `create_agent.py`, and the Resource (if used) is only for lifecycle/binding of the
-non-MCP definition. **Productized path:** add a `tools` passthrough to the
-`azure-foundry-prompt-agent-xp` ResourceType and the Crossplane `FoundryAgent`
+non-MCP definition. **Productized path:** add an `mcpServers` passthrough to the
+`azure-foundry-agent` ResourceType and the Crossplane `FoundryAgent`
 composition so the MCP tool array is declared in `agent-resource.yaml` and
 provisioned by the platform — removing the need for the out-of-band script.
 
